@@ -1,5 +1,8 @@
 # vim: fdm=indent
 from typing import Dict
+import queue
+import os
+import requests
 import vim
 import jupyter_client
 
@@ -19,8 +22,10 @@ class State(object):
         """
 
         if not self.initialized:
-            self.client = jupyter_client.run_kernel(kernel_name=kernel_name)
+            # self.client = jupyter_client.run_kernel(kernel_name=kernel_name)
             # self.client = jupyter_client.KernelClient()
+            _, self.client = jupyter_client.manager.start_new_kernel(
+                kernel_name=kernel_name)
             self.initialized = True
 
     def restart(self):
@@ -51,18 +56,25 @@ def init():
 
     if not state.initialized:
         # Select from available kernels
-        ## List them
+        # # List them
         kernelspecmanager = jupyter_client.kernelspec.KernelSpecManager()
         kernels = kernelspecmanager.get_all_specs()
         specs = [jupyter_client.kernelspec.get_kernel_spec(x) for x in kernels]
-        ## Ask
-        choice = vim.eval('inputlist(%r)' % ("Choose the kernel to start:" + ["%d. %s" % x for x in enumerate(y.display_name for y in specs)]))
+        # # Ask
+        choice = int(vim.eval('inputlist(%r)'
+                              % (["Choose the kernel to start:"] +
+                                 ["%d. %s" % (a+1, b) for a, b in
+                                     enumerate(y.display_name for y in specs)])
+                              ))
         if choice == 0:
+            print("Cancelled.")
             return False
 
         state.initialize(specs[choice-1].language)
 
-        vim.command('echomsg "Successfully initialized kernel %s!"')
+        print()
+        vim.command('echomsg "Successfully initialized kernel %s!"'
+                    % specs[choice-1].display_name)
 
         return True
 
@@ -76,23 +88,38 @@ def deinit():
 def evaluate(code):
     global state
 
-    if not init():
+    if not state.initialized:
         return
 
     msg_id = state.client.execute(code)
+
+    # execution_count = reply['execution_count']
     state.waiting[msg_id] = {
-        'type': 'output'
+        'type': 'output',
+        # 'execution_count': execution_count,
     }
+    start_outputs()
+    # reply = state.client.get_shell_msg(msg_id)
+    # status = reply['status']
+    # if status == 'ok':
+    # elif status == 'error':
+    #     print("(magma.vim) EXCEPTION: %s: %s" % (status['ename'], status['evalue']))
+    # elif status == 'abort':
+    #     print("(magma.vim) Execution aborted")
 
 
 def start_outputs():
     global state
 
     state.output_count += 1
-    job = [PYTHON3_BIN, MAGMA_OUTPUT_SCRIPT, 'localhost', 10000 + state.output_count]  # noqa: F821
+    job = ['python3',
+           os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                        'magma_output.py'),
+           '127.0.0.1', 10000 + state.output_count]
     # TODO: add to a map of output jobs in order to communicate jupyter IO
 
-    vim.eval('term_start(%r, {"term_name": "(magma) Out[%d]"})' % (job, state.output_count))
+    vim.eval('term_start(%r, {"term_name": "(magma) Out[%d]"})'
+             % (job, state.output_count))
 
 
 def show_output():
@@ -106,18 +133,20 @@ def show_output():
 def update():
     global state
 
-    # Process `shell` channel
-    msg = state.client.get_shell_msg()
-    while msg is not None:
-        # TODO
-        msg = state.client.get_shell_msg()
-    # Process `iopub` channel
-    msg = state.client.get_iopub_msg()
-    while msg is not None:
-        # TODO
-        msg = state.client.get_iopub_msg()
-    # Process `stdin` channel
-    msg = state.client.get_stdin_msg()
-    while msg is not None:
-        # TODO
-        msg = state.client.get_stdin_msg()
+    if not state.initialized:
+        return
+
+    try:
+        message = state.client.get_iopub_msg(timeout=0.25)
+        if 'content' not in message:
+            return
+        content = message['content']
+        if 'data' in content:
+            data = content['data']
+            requests.post('http://127.0.0.1:%d' % (10000 + state.output_count),
+                          json=data)
+            # print("data:", data)
+        # if 'execution_state' in content:
+        #     state = content['execution_state']
+    except queue.Empty:
+        return
