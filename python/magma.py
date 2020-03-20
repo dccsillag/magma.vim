@@ -16,9 +16,9 @@ class State(object):
     def __del__(self):
         self.deinitialize()
 
-    def initialize(self, kernel_name):
+    def initialize_new(self, kernel_name):
         """
-        Initialize the client, if it isn't yet initialized.
+        Initialize the client and a local kernel, if it isn't yet initialized.
         """
 
         if not self.initialized:
@@ -26,6 +26,16 @@ class State(object):
             # self.client = jupyter_client.KernelClient()
             _, self.client = jupyter_client.manager.start_new_kernel(
                 kernel_name=kernel_name)
+            self.initialized = True
+
+    def initialize_remote(self, connection_file):
+        """
+        Initialize the client and connect to a kernel (possibly remote), if it isn't yet initialized.
+        """
+
+        if not self.initialized:
+            cf = jupyter_client.find_connection_file(connection_file)
+            self.client = jupyter_client.KernelClient(connection_file=cf)
             self.initialized = True
 
     def restart(self):
@@ -51,7 +61,7 @@ class State(object):
 state = State()
 
 
-def init():
+def init_local():
     global state
 
     if not state.initialized:
@@ -70,11 +80,22 @@ def init():
             print("Cancelled.")
             return False
 
-        state.initialize(specs[choice-1].language)
+        state.initialize_local(specs[choice-1].language)
 
         print()
         vim.command('echomsg "Successfully initialized kernel %s!"'
                     % specs[choice-1].display_name)
+
+        return True
+
+
+def init_existing(connection_file):
+    global state
+
+    if not state.initialized:
+        state.initialize_remote(connection_file)
+
+        vim.command('echomsg "Successfully connected to the kernel!"')
 
         return True
 

@@ -30,8 +30,12 @@ endfunction
 
 " Python wrappers
 
-function s:MagmaInit()
-    python3 magma.init()
+function s:MagmaInit(...)
+    if v:0 == 0
+        python3 magma.init()
+    else
+        python3 magma.init(vim.eval('a:1'))
+    endif
 endfunction
 
 function s:MagmaDeinit()
