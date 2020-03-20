@@ -57,7 +57,7 @@ function MagmaUpdate(...)
 endfunction
 
 
-command! -nargs=0 MagmaInit call s:MagmaInit()
+command! -nargs=? MagmaInit call s:MagmaInit()
 command! -nargs=0 MagmaDeinit call s:MagmaDeinit()
 command! -nargs=0 MagmaShow call s:MagmaShow()
 command! -nargs=0 MagmaEvaluate call s:MagmaEvaluate(s:GetParagraph())
