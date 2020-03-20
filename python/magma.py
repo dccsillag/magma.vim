@@ -34,7 +34,8 @@ class State(object):
         """
 
         if not self.initialized:
-            cf = jupyter_client.find_connection_file(connection_file)
+            # cf = jupyter_client.find_connection_file(connection_file)
+            cf = os.path.realpath(connection_file)
             self.client = jupyter_client.KernelClient(connection_file=cf)
             self.initialized = True
 
