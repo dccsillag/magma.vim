@@ -31,7 +31,7 @@ endfunction
 " Python wrappers
 
 function s:MagmaInit(...)
-    if v:0 == 0
+    if a:0 == 0
         python3 magma.init_local()
     else
         python3 magma.init_existing(vim.eval('a:1'))
