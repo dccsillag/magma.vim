@@ -37,8 +37,19 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(202)
         self.end_headers()
 
-        for mimetype, content in body.items():
-            show_output(mimetype, content)
+        kind = body['type']
+        if kind == 'output':
+            for mimetype, content in body['content'].items():
+                show_output(mimetype, content)
+        elif kind == 'stdout':
+            print(body['content'], file=sys.stdout)
+        elif kind == 'stderr':
+            print(body['content'], file=sys.stderr)
+        elif kind == 'done':
+            print("done.")
+            raise KeyboardInterrupt
+        else:
+            raise Exception("Unknown POST request type: %s" % kind)
 
     def log_message(self, format, *args):
         pass  # do nothing

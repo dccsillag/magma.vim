@@ -1,6 +1,7 @@
 from typing import Dict
 import queue
 import json
+import sys
 import os
 import time
 import threading
@@ -219,14 +220,40 @@ def update():
 
     try:
         message = state.client.get_iopub_msg(timeout=0.25)
-        if 'content' not in message:
+        done = False
+        if 'content' in message:  # type = `display_data`
+            content = message['content']
+            if 'data' in content:
+                data = {
+                    'type': 'output',
+                    'content': content['data'],
+                }
+                if 'execution_count' in content:
+                    done = True
+            else:
+                return
+        elif 'name' in message:  # type = `stream`
+            name = message['name']
+            if name == 'stdout':
+                data = {
+                    'type': 'stdout',
+                    'content': message['text'],
+                }
+            elif name == 'stderr':
+                data = {
+                    'type': 'stderr',
+                    'content': message['text'],
+                }
+            else:
+                raise Exception("Unkown stream:name = '%s'" % name)
+        else:
             return
-        content = message['content']
-        if 'data' in content:
-            data = content['data']
+
+        requests.post('http://127.0.0.1:%d' % (10000 + state.output_count),
+                      json=data)
+        if done:
             requests.post('http://127.0.0.1:%d' % (10000 + state.output_count),
-                          json=data)
-            # print("data:", data)
+                          json={'type': 'done'})
         # if 'execution_state' in content:
         #     state = content['execution_state']
     except queue.Empty:
