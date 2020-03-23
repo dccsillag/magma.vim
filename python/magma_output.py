@@ -1,5 +1,6 @@
 import sys
 import os
+import subprocess
 import http.server
 import json
 import socketserver
@@ -19,7 +20,13 @@ def show_output(mimetype, content):
             decoded = codecs.decode(content.encode(), 'base64')
             tmpfile.write(decoded)
         os.system('feh --image-bg white %s' % tmppath)
+    elif mimetype == 'text/html':
+        print("Rendering HTML...")
+        subprocess.run(['w3m', '-dump', '-T', 'text/html'], input=content, text=True)
     else:
+        print("--------", file=sys.stderr)
+        print("Example input:", file=sys.stderr)
+        print(content)
         raise Exception("Unknown mimetype: %s" % mimetype)
 
 
@@ -71,7 +78,7 @@ def main():
 
     try:
         with socketserver.TCPServer(('', args.port), MyHandler) as httpd:
-            print("Serving at IP %s; port %d" % httpd.server_address)
+            # print("Serving at IP %s; port %d" % httpd.server_address)
             httpd.serve_forever()
     except KeyboardInterrupt:
         return
