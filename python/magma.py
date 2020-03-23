@@ -1,7 +1,10 @@
 # vim: fdm=indent
 from typing import Dict
 import queue
+import json
 import os
+import time
+import threading
 import requests
 import vim
 import jupyter_client
@@ -9,9 +12,10 @@ import jupyter_client
 
 class State(object):
     initialized: bool = False
-    client: jupyter_client.KernelClient = None
+    client: jupyter_client.BlockingKernelClient = None
     waiting: Dict[str, dict] = {}
     output_count: int = 0
+    background_loop = None
 
     def __del__(self):
         self.deinitialize()
@@ -23,21 +27,38 @@ class State(object):
 
         if not self.initialized:
             # self.client = jupyter_client.run_kernel(kernel_name=kernel_name)
-            # self.client = jupyter_client.KernelClient()
+            # self.client = jupyter_client.BlockingKernelClient()
             _, self.client = jupyter_client.manager.start_new_kernel(
                 kernel_name=kernel_name)
             self.initialized = True
 
+            self.start_background_loop()
+
     def initialize_remote(self, connection_file):
         """
-        Initialize the client and connect to a kernel (possibly remote), if it isn't yet initialized.
+        Initialize the client and connect to a kernel (possibly remote),
+          if it isn't yet initialized.
         """
 
         if not self.initialized:
-            # cf = jupyter_client.find_connection_file(connection_file)
-            cf = os.path.realpath(connection_file)
-            self.client = jupyter_client.KernelClient(connection_file=cf)
+            self.client = jupyter_client.BlockingKernelClient()
+            self.client.load_connection_file(connection_file)
+
+            self.client.start_channels()
+            try:
+                print("Connecting to the kernel...")
+                self.client.wait_for_ready(timeout=60)
+            except RuntimeError:
+                self.client.stop_channels()
+                print("Could not connect to existing kernel.")
+                return
             self.initialized = True
+
+            self.start_background_loop()
+
+    def start_background_loop(self):
+        self.background_loop = threading.Thread(target=update_loop)
+        self.background_loop.start()
 
     def restart(self):
         """
@@ -58,8 +79,20 @@ class State(object):
             self.client.shutdown()
             self.initialized = False
 
+            self.background_loop.join()
+
 
 state = State()
+
+
+def setup_ssh_tunneling(host, connection_file):
+    with open(connection_file) as f:
+        parsed = json.load(f)
+
+    ports = [value for key, value in parsed.items() if key.endswith('_port')]
+    for port in ports:
+        os.system('ssh {host} -f -N -L {port}:localhost:{port}'
+                  .format(host=host, port=port))
 
 
 def init_local():
@@ -81,7 +114,7 @@ def init_local():
             print("Cancelled.")
             return False
 
-        state.initialize_local(specs[choice-1].language)
+        state.initialize_new(specs[choice-1].language)
 
         print()
         vim.command('echomsg "Successfully initialized kernel %s!"'
@@ -172,3 +205,13 @@ def update():
         #     state = content['execution_state']
     except queue.Empty:
         return
+
+
+def update_loop():
+    global state
+
+    while True:
+        if not state.initialized:
+            break
+        update()
+        time.sleep(0.5)

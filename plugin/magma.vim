@@ -38,6 +38,18 @@ function s:MagmaInit(...)
     endif
 endfunction
 
+function s:MagmaRemoteInit(host, connection_file)
+    let l:connection_file = system('mktemp')
+    " Remove the trailing newline:
+    let l:connection_file = l:connection_file[:strlen(l:connection_file)-2]
+    " Copy the connection file:
+    execute "!scp \"scp://" . a:host . "/" . a:connection_file . "\" " . l:connection_file
+    " Setup SSH tunneling
+    python3 magma.setup_ssh_tunneling(vim.eval('a:host'), vim.eval('l:connection_file'))
+    " Finally, initialize Magma with the given (copied) connection file
+    call s:MagmaInit(l:connection_file)
+endfunction
+
 function s:MagmaDeinit()
     python3 magma.deinit()
 endfunction
@@ -52,12 +64,9 @@ function s:MagmaShow()
     python3 magma.evaluate(vim.eval('l:code'))
 endfunction
 
-function MagmaUpdate(...)
-    python3 magma.update()
-endfunction
 
-
-command! -nargs=? MagmaInit call s:MagmaInit()
+command! -nargs=? MagmaInit call s:MagmaInit(<f-args>)
+command! -nargs=+ MagmaRemoteInit call s:MagmaRemoteInit(<f-args>)
 command! -nargs=0 MagmaDeinit call s:MagmaDeinit()
 command! -nargs=0 MagmaShow call s:MagmaShow()
 command! -nargs=0 MagmaEvaluate call s:MagmaEvaluate(s:GetParagraph())
@@ -65,11 +74,8 @@ command! -nargs=0 MagmaEvaluate call s:MagmaEvaluate(s:GetParagraph())
 nnoremap <Leader><Leader>p :MagmaPopup<CR>
 nnoremap <Leader><Leader><Leader> :MagmaEvaluate<CR>
 
-let g:magma_update_timer = timer_start(1000, 'MagmaUpdate', {'repeat': -1})
-
 augroup magma
     autocmd!
-    " autocmd CursorHold * call s:MagmaUpdate()
     " TODO: add more commands for automatically running :MagmaDeinit ↓↓↓↓↓
     autocmd! VimLeave * MagmaDeinit
 augroup END
