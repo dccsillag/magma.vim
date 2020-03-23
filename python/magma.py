@@ -1,4 +1,3 @@
-# vim: fdm=indent
 from typing import Dict
 import queue
 import json
@@ -34,7 +33,7 @@ class State(object):
 
             self.start_background_loop()
 
-    def initialize_remote(self, connection_file):
+    def initialize_remote(self, connection_file, ssh=None):
         """
         Initialize the client and connect to a kernel (possibly remote),
           if it isn't yet initialized.
@@ -42,15 +41,30 @@ class State(object):
 
         if not self.initialized:
             self.client = jupyter_client.BlockingKernelClient()
-            self.client.load_connection_file(connection_file)
+            if ssh is None:
+                self.client.load_connection_file(connection_file)
+            else:
+                with open(connection_file) as f:
+                    parsed = json.load(f)
+
+                newports = jupyter_client.tunnel_to_kernel(connection_file,
+                                                           ssh)
+                parsed['shell_port'], parsed['iopub_port'], \
+                    parsed['stdin_port'], parsed['hb_port'], \
+                    parsed['control_port'] = newports
+
+                with open(connection_file, 'w') as f:
+                    json.dump(parsed, f)
+
+                self.client.load_connection_file(connection_file)
 
             self.client.start_channels()
             try:
                 print("Connecting to the kernel...")
                 self.client.wait_for_ready(timeout=60)
-            except RuntimeError:
+            except RuntimeError as err:
                 self.client.stop_channels()
-                print("Could not connect to existing kernel.")
+                print("Could not connect to existing kernel: %s" % err)
                 return
             self.initialized = True
 
@@ -86,13 +100,14 @@ state = State()
 
 
 def setup_ssh_tunneling(host, connection_file):
-    with open(connection_file) as f:
-        parsed = json.load(f)
-
-    ports = [value for key, value in parsed.items() if key.endswith('_port')]
-    for port in ports:
-        os.system('ssh {host} -f -N -L {port}:localhost:{port}'
-                  .format(host=host, port=port))
+    jupyter_client.tunnel_to_kernel(connection_file, host)
+    # with open(connection_file) as f:
+    #     parsed = json.load(f)
+    #
+    # ports = [value for key, value in parsed.items() if key.endswith('_port')]
+    # for port in ports:
+    #     os.system('ssh {host} -f -N -L {port}:localhost:{port}'
+    #               .format(host=host, port=port))
 
 
 def init_local():
@@ -130,6 +145,17 @@ def init_existing(connection_file):
         state.initialize_remote(connection_file)
 
         vim.command('echomsg "Successfully connected to the kernel!"')
+
+        return True
+
+
+def init_remote(host, connection_file):
+    global state
+
+    if not state.initialized:
+        state.initialize_remote(connection_file, ssh=host)
+
+        vim.command('echomsg "Successfully connected to the remote kernel!"')
 
         return True
 

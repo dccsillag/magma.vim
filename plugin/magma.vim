@@ -44,10 +44,12 @@ function s:MagmaRemoteInit(host, connection_file)
     let l:connection_file = l:connection_file[:strlen(l:connection_file)-2]
     " Copy the connection file:
     execute "!scp \"scp://" . a:host . "/" . a:connection_file . "\" " . l:connection_file
+    python3 magma.init_remote(vim.eval('a:host'), vim.eval('l:connection_file'))
+
     " Setup SSH tunneling
-    python3 magma.setup_ssh_tunneling(vim.eval('a:host'), vim.eval('l:connection_file'))
+    " python3 magma.setup_ssh_tunneling(vim.eval('a:host'), vim.eval('l:connection_file'))
     " Finally, initialize Magma with the given (copied) connection file
-    call s:MagmaInit(l:connection_file)
+    " call s:MagmaInit(l:connection_file)
 endfunction
 
 function s:MagmaDeinit()
