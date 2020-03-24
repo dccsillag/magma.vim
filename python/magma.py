@@ -11,12 +11,19 @@ import jupyter_client
 from pprint import pprint
 
 
+KS_IDLE = 0
+KS_BUSY = 1
+KS_NOT_CONNECTED = 2
+KS_DEAD = 3
+
+
 class State(object):
     initialized: bool = False
     client: jupyter_client.BlockingKernelClient = None
     waiting: Dict[str, dict] = {}
     output_count: int = 0
     background_loop = None
+    kernel_state: int = KS_NOT_CONNECTED
 
     def __del__(self):
         self.deinitialize()
@@ -31,6 +38,7 @@ class State(object):
             # self.client = jupyter_client.BlockingKernelClient()
             _, self.client = jupyter_client.manager.start_new_kernel(
                 kernel_name=kernel_name)
+            self.kernel_state = KS_IDLE
             self.initialized = True
 
             self.start_background_loop()
@@ -68,6 +76,7 @@ class State(object):
                 self.client.stop_channels()
                 print("Could not connect to existing kernel: %s" % err)
                 return
+            self.kernel_state = KS_IDLE
             self.initialized = True
 
             self.start_background_loop()
@@ -83,7 +92,9 @@ class State(object):
 
         if self.initialized:
             self.client.initialized = False
+            self.kernel_state = KS_NOT_CONNECTED
             self.client.shutdown(True)
+            self.kernel_state = KS_IDLE
             self.client.initialized = True
 
     def deinitialize(self):
@@ -93,6 +104,7 @@ class State(object):
 
         if self.initialized:
             self.client.shutdown()
+            self.kernel_state = KS_NOT_CONNECTED
             self.initialized = False
 
             self.background_loop.join()
@@ -263,7 +275,7 @@ def update():
             }
         elif message_type == 'display_data':
             data = {
-                'type': 'output',
+                'type': 'display',
                 'content': content['data'],
             }
         elif message_type == 'stream':
@@ -282,6 +294,12 @@ def update():
                 raise Exception("Unkown stream:name = '%s'" % name)
         elif message_type == 'execute_input':
             return  # TODO
+        elif message_type == 'status':
+            if content['execution_state'] == 'idle':
+                state.kernel_state = KS_IDLE
+            elif content['execution_state'] == 'busy':
+                state.kernel_state = KS_BUSY
+            return
         else:
             return
 
@@ -302,3 +320,9 @@ def update_loop():
             break
         update()
         time.sleep(0.5)
+
+
+def get_kernel_state(vim_var):
+    global state
+
+    vim.command('let %s = %s' % (vim_var, state.kernel_state))

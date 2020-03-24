@@ -66,6 +66,11 @@ function s:MagmaShow()
     python3 magma.evaluate(vim.eval('l:code'))
 endfunction
 
+function MagmaState()
+    python3 magma.get_kernel_state('g:magma_kernel_state')
+    return g:magma_kernel_state
+endfunction
+
 
 command! -nargs=? MagmaInit call s:MagmaInit(<f-args>)
 command! -nargs=+ MagmaRemoteInit call s:MagmaRemoteInit(<f-args>)
