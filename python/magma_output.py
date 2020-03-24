@@ -51,6 +51,13 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
         if kind == 'output':
             for mimetype, content in body['content'].items():
                 show_output(mimetype, content)
+        elif kind == 'error':
+            print("-------", file=sys.stderr)
+            print(" Error", file=sys.stderr)
+            print("-------", file=sys.stderr)
+            print("  %s: %s"
+                  % (body['error_type'], body['error_message']),
+                  file=sys.stderr)
         elif kind == 'stdout':
             print(body['content'], file=sys.stdout)
         elif kind == 'stderr':
