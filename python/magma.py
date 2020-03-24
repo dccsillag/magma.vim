@@ -8,6 +8,8 @@ import requests
 import vim
 import jupyter_client
 
+from pprint import pprint
+
 
 class State(object):
     initialized: bool = False
@@ -219,36 +221,70 @@ def update():
 
     try:
         message = state.client.get_iopub_msg(timeout=0.25)
-        done = False
-        if 'content' in message:  # type = `display_data`
-            content = message['content']
-            if 'data' in content:
+        if 'content' not in message or \
+           'msg_type' not in message:
+            return
+
+        pprint(message)
+        message_type = message['msg_type']
+        content = message['content']
+
+        if message_type == 'execute_reply':
+            if content['status'] == 'ok':
                 data = {
                     'type': 'output',
-                    'content': content['data'],
+                    'text': content['status'],
                 }
-                if 'execution_count' in content:
-                    done = True
-            else:
-                return
-        elif 'name' in message:  # type = `stream`
-            name = message['name']
+            elif content['status'] == 'error':
+                data = {
+                    'type': 'error',
+                    'error_type': content['ename'],
+                    'error_message': content['evalue'],
+                    'traceback': content['traceback'],
+                }
+            elif content['status'] == 'abort':
+                data = {
+                    'type': 'error',
+                    'error_type': "Aborted",
+                    'error_message': "Kernel aborted with no error message",
+                    'traceback': None,
+                }
+        elif message_type == 'execute_result':
+            data = {
+                'type': 'display',
+                'content': content['data'],
+            }
+        elif message_type == 'error':
+            data = {
+                'type': 'error',
+                'error_type': content['ename'],
+                'error_message': content['evalue'],
+                'traceback': content['traceback'],
+            }
+        elif message_type == 'display_data':
+            data = {
+                'type': 'output',
+                'content': content['data'],
+            }
+        elif message_type == 'stream':
+            name = content['name']
             if name == 'stdout':
                 data = {
                     'type': 'stdout',
-                    'content': message['text'],
+                    'content': content['text'],
                 }
             elif name == 'stderr':
                 data = {
                     'type': 'stderr',
-                    'content': message['text'],
+                    'content': content['text'],
                 }
             else:
                 raise Exception("Unkown stream:name = '%s'" % name)
+        elif message_type == 'execute_input':
+            return  # TODO
         else:
             return
 
-        data['done'] = done  # FIXME
         requests.post('http://127.0.0.1:%d' % (10000 + state.output_count),
                       json=data)
 
