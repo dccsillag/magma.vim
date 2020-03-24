@@ -19,10 +19,13 @@ def show_output(mimetype, content):
         with open(tmppath, 'wb') as tmpfile:
             decoded = codecs.decode(content.encode(), 'base64')
             tmpfile.write(decoded)
+        os.system('tiv %s' % tmppath)
         os.system('feh --image-bg white %s' % tmppath)
     elif mimetype == 'text/html':
         print("Rendering HTML...")
-        subprocess.run(['w3m', '-dump', '-T', 'text/html'], input=content, text=True)
+        subprocess.run(['w3m', '-dump', '-T', 'text/html'],
+                       input=content,
+                       text=True)
     else:
         print("--------", file=sys.stderr)
         print("Example input:", file=sys.stderr)
@@ -52,11 +55,11 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             print(body['content'], file=sys.stdout)
         elif kind == 'stderr':
             print(body['content'], file=sys.stderr)
-        elif kind == 'done':
-            print("done.")
-            raise KeyboardInterrupt
         else:
             raise Exception("Unknown POST request type: %s" % kind)
+
+        # if body['done']:
+        #     self.server.shutdown()
 
     def log_message(self, format, *args):
         pass  # do nothing

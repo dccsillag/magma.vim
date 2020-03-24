@@ -1,7 +1,6 @@
 from typing import Dict
 import queue
 import json
-import sys
 import os
 import time
 import threading
@@ -249,11 +248,10 @@ def update():
         else:
             return
 
+        data['done'] = done  # FIXME
         requests.post('http://127.0.0.1:%d' % (10000 + state.output_count),
                       json=data)
-        if done:
-            requests.post('http://127.0.0.1:%d' % (10000 + state.output_count),
-                          json={'type': 'done'})
+
         # if 'execution_state' in content:
         #     state = content['execution_state']
     except queue.Empty:
