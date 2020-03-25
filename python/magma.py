@@ -1,6 +1,7 @@
 from typing import Dict
 import queue
 import json
+import sys
 import os
 import time
 import threading
@@ -16,14 +17,18 @@ KS_BUSY = 1
 KS_NOT_CONNECTED = 2
 KS_DEAD = 3
 
+HS_RUNNING = 0
+HS_DONE = 1
+
 
 class State(object):
     initialized: bool = False
     client: jupyter_client.BlockingKernelClient = None
-    waiting: Dict[str, dict] = {}
-    output_count: int = 0
+    history: Dict[str, dict] = {}
+    current_execution_count: int = 0
     background_loop = None
     kernel_state: int = KS_NOT_CONNECTED
+    events: queue.Queue = queue.Queue()
 
     def __del__(self):
         self.deinitialize()
@@ -188,33 +193,37 @@ def evaluate(code):
 
     msg_id = state.client.execute(code)
 
-    # execution_count = reply['execution_count']
-    state.waiting[msg_id] = {
-        'type': 'output',
-        # 'execution_count': execution_count,
-    }
-    start_outputs()
-    # reply = state.client.get_shell_msg(msg_id)
-    # status = reply['status']
-    # if status == 'ok':
-    # elif status == 'error':
-    #     print("(magma.vim) EXCEPTION: %s: %s" % (status['ename'], status['evalue']))
-    # elif status == 'abort':
-    #     print("(magma.vim) Execution aborted")
+    reply = state.client.get_shell_msg(msg_id)
+    content = reply['content']
+    status = content['status']
+
+    if status == 'ok':
+        state.current_execution_count = content['execution_count']
+        state.history[state.current_execution_count] = {
+            'type': 'output',
+            'status': HS_RUNNING,
+            'output': []
+        }
+        start_outputs()
+    elif status == 'error':
+        print("Could not evaluate: %s: %s"
+              % (content['ename'], content['evalue']),
+              file=sys.stderr)
+    elif status == 'abort':
+        print("Could not evaluate: aborted.", file=sys.stderr)
 
 
 def start_outputs():
     global state
 
-    state.output_count += 1
     job = ['python3',
            os.path.join(os.path.dirname(os.path.realpath(__file__)),
                         'magma_output.py'),
-           '127.0.0.1', 10000 + state.output_count]
+           '127.0.0.1', 10000 + state.current_execution_count]
     # TODO: add to a map of output jobs in order to communicate jupyter IO
 
     vim.eval('term_start(%r, {"term_name": "(magma) Out[%d]"})'
-             % (job, state.output_count))
+             % (job, state.current_execution_count))
 
 
 def show_output():
@@ -237,10 +246,9 @@ def update():
            'msg_type' not in message:
             return
 
-        pprint(message)
+        # pprint(message)
         message_type = message['msg_type']
         content = message['content']
-
         if message_type == 'execute_reply':
             if content['status'] == 'ok':
                 data = {
@@ -261,11 +269,13 @@ def update():
                     'error_message': "Kernel aborted with no error message",
                     'traceback': None,
                 }
+            state.history[state.current_execution_count]['output'].append(data)
         elif message_type == 'execute_result':
             data = {
                 'type': 'display',
                 'content': content['data'],
             }
+            state.history[state.current_execution_count]['output'].append(data)
         elif message_type == 'error':
             data = {
                 'type': 'error',
@@ -273,11 +283,13 @@ def update():
                 'error_message': content['evalue'],
                 'traceback': content['traceback'],
             }
+            state.history[state.current_execution_count]['output'].append(data)
         elif message_type == 'display_data':
             data = {
                 'type': 'display',
                 'content': content['data'],
             }
+            state.history[state.current_execution_count]['output'].append(data)
         elif message_type == 'stream':
             name = content['name']
             if name == 'stdout':
@@ -292,6 +304,7 @@ def update():
                 }
             else:
                 raise Exception("Unkown stream:name = '%s'" % name)
+            state.history[state.current_execution_count]['output'].append(data)
         elif message_type == 'execute_input':
             return  # TODO
         elif message_type == 'status':
@@ -299,15 +312,14 @@ def update():
                 state.kernel_state = KS_IDLE
             elif content['execution_state'] == 'busy':
                 state.kernel_state = KS_BUSY
+            state.events.put(lambda: vim.command('let &stl=&stl'))
             return
         else:
             return
 
-        requests.post('http://127.0.0.1:%d' % (10000 + state.output_count),
+        requests.post('http://127.0.0.1:%d'
+                      % (10000 + state.current_execution_count),
                       json=data)
-
-        # if 'execution_state' in content:
-        #     state = content['execution_state']
     except queue.Empty:
         return
 
@@ -320,6 +332,13 @@ def update_loop():
             break
         update()
         time.sleep(0.5)
+
+
+def vim_update():
+    global state
+
+    while state.events.qsize() > 0:
+        state.events.get()()
 
 
 def get_kernel_state(vim_var):

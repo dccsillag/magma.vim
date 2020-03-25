@@ -71,12 +71,18 @@ function MagmaState()
     return g:magma_kernel_state
 endfunction
 
+function MagmaUpdate(...)
+    python3 magma.vim_update()
+endfunction
+
 
 command! -nargs=? MagmaInit call s:MagmaInit(<f-args>)
 command! -nargs=+ MagmaRemoteInit call s:MagmaRemoteInit(<f-args>)
 command! -nargs=0 MagmaDeinit call s:MagmaDeinit()
 command! -nargs=0 MagmaShow call s:MagmaShow()
 command! -nargs=0 MagmaEvaluate call s:MagmaEvaluate(s:GetParagraph())
+
+let g:magma_timer = timer_start(100, 'MagmaUpdate', { 'repeat': -1 })
 
 nnoremap <Leader><Leader>p :MagmaPopup<CR>
 nnoremap <Leader><Leader><Leader> :MagmaEvaluate<CR>
