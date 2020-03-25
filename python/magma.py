@@ -193,34 +193,60 @@ def evaluate(code):
     if not state.initialized:
         return
 
-    msg_id = state.client.execute(code)
+    # Check if we can actually evaluate this code (e.g. isn't already in queue)
+    signs = vim.eval('sign_getplaced(%s, {"group": "magma"})'
+                     % (state.main_buffer.number)
+                     )[0]['signs']
+    if any(sign['id'] in state.sign_ids_hold for sign in signs):
+        print("Trying to re-evaluate a line that is on hold",
+              file=sys.stderr)
+        return False
+    if any(sign['id'] in state.sign_ids_running for sign in signs):
+        print("Trying to re-evaluate a line that is already running",
+              file=sys.stderr)
+        return False
 
-    reply = state.client.get_shell_msg(msg_id)
-    content = reply['content']
-    status = content['status']
+    for lineno, linestr in paragraph_iter():
+        signs_in_this_line = [sign for sign in signs if sign['lnum'] == lineno]
+        for sign in signs_in_this_line:
+            vim.command('sign unplace %s group=magma buffer=%s'
+                        % (sign['id'], state.main_buffer.number))
 
-    state.current_execution_count = content['execution_count']
-    state.history[state.current_execution_count] = {
-        'type': 'output',
-        'status': HS_RUNNING,
-        'output': []
-    }
-    if status == 'error':
-        state.history[state.current_execution_count]['output'].append({
-            'type': 'error',
-            'error_type': content['ename'],
-            'error_message': content['evalue'],
-            'traceback': content['traceback'],
-        })
-    elif status == 'abort':
-        state.history[state.current_execution_count]['output'].append({
-            'type': 'error',
-            'error_type': "Aborted",
-            'error_message': "Kernel aborted with no error message",
-            'traceback': "",
-        })
-    setsign_running(state.current_execution_count)
-    start_outputs()
+    if state.kernel_state == KS_IDLE:
+        msg_id = state.client.execute(code)
+
+        reply = state.client.get_shell_msg(msg_id)
+        content = reply['content']
+        status = content['status']
+
+        state.current_execution_count = content['execution_count']
+        state.history[state.current_execution_count] = {
+            'type': 'output',
+            'status': HS_RUNNING,
+            'output': []
+        }
+        if status == 'error':
+            state.history[state.current_execution_count]['output'].append({
+                'type': 'error',
+                'error_type': content['ename'],
+                'error_message': content['evalue'],
+                'traceback': content['traceback'],
+            })
+        elif status == 'abort':
+            state.history[state.current_execution_count]['output'].append({
+                'type': 'error',
+                'error_type': "Aborted",
+                'error_message': "Kernel aborted with no error message",
+                'traceback': "",
+            })
+        setsign_running(state.current_execution_count)
+        start_outputs()
+    elif state.kernel_state == KS_BUSY:
+        # TODO: add to execution queue, to be sent for execution whenever ready
+        pass
+    else:
+        print("Invalid kernel state: %d" % state.kernel_state, sys.stderr)
+        return
 
 
 def start_outputs():
