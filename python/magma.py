@@ -1,16 +1,15 @@
-from typing import Dict
-import queue
 import json
-import sys
 import os
-import time
+import queue
+import sys
 import threading
-import requests
-import vim
+import time
+from typing import Dict
+
 import jupyter_client
+import requests
 
-from pprint import pprint
-
+import vim
 
 KS_IDLE = 0
 KS_BUSY = 1
@@ -120,13 +119,6 @@ state = State()
 
 def setup_ssh_tunneling(host, connection_file):
     jupyter_client.tunnel_to_kernel(connection_file, host)
-    # with open(connection_file) as f:
-    #     parsed = json.load(f)
-    #
-    # ports = [value for key, value in parsed.items() if key.endswith('_port')]
-    # for port in ports:
-    #     os.system('ssh {host} -f -N -L {port}:localhost:{port}'
-    #               .format(host=host, port=port))
 
 
 def init_local():
