@@ -189,20 +189,27 @@ def evaluate(code):
     content = reply['content']
     status = content['status']
 
-    if status == 'ok':
-        state.current_execution_count = content['execution_count']
-        state.history[state.current_execution_count] = {
-            'type': 'output',
-            'status': HS_RUNNING,
-            'output': []
-        }
-        start_outputs()
-    elif status == 'error':
-        print("Could not evaluate: %s: %s"
-              % (content['ename'], content['evalue']),
-              file=sys.stderr)
+    state.current_execution_count = content['execution_count']
+    state.history[state.current_execution_count] = {
+        'type': 'output',
+        'status': HS_RUNNING,
+        'output': []
+    }
+    if status == 'error':
+        state.history[state.current_execution_count]['output'].append({
+            'type': 'error',
+            'error_type': content['ename'],
+            'error_message': content['evalue'],
+            'traceback': content['traceback'],
+        })
     elif status == 'abort':
-        print("Could not evaluate: aborted.", file=sys.stderr)
+        state.history[state.current_execution_count]['output'].append({
+            'type': 'error',
+            'error_type': "Aborted",
+            'error_message': "Kernel aborted with no error message",
+            'traceback': "",
+        })
+    start_outputs()
 
 
 def start_outputs():
@@ -259,7 +266,7 @@ def update():
                     'type': 'error',
                     'error_type': "Aborted",
                     'error_message': "Kernel aborted with no error message",
-                    'traceback': None,
+                    'traceback': "",
                 }
             state.history[state.current_execution_count]['output'].append(data)
         elif message_type == 'execute_result':
