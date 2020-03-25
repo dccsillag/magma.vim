@@ -22,7 +22,6 @@ def show_output(mimetype, content):
         os.system('tiv %s' % tmppath)
         os.system('feh --image-bg white %s' % tmppath)
     elif mimetype == 'text/html':
-        print("Rendering HTML...")
         subprocess.run(['w3m', '-dump', '-T', 'text/html'],
                        input=content,
                        text=True)
@@ -62,11 +61,10 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             sys.stdout.write(body['content'])
         elif kind == 'stderr':
             sys.stderr.write(body['content'])
+        elif kind == 'done':
+            raise KeyboardInterrupt
         else:
             raise Exception("Unknown POST request type: %s" % kind)
-
-        # if body['done']:
-        #     self.server.shutdown()
 
     def log_message(self, format, *args):
         pass  # do nothing

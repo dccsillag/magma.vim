@@ -309,9 +309,12 @@ def update():
         elif message_type == 'status':
             if content['execution_state'] == 'idle':
                 state.kernel_state = KS_IDLE
+                requests.post('http://127.0.0.1:%d'
+                              % (10000 + state.current_execution_count),
+                              json={'type': 'done'})
             elif content['execution_state'] == 'busy':
                 state.kernel_state = KS_BUSY
-            state.events.put(lambda: vim.command('let &stl=&stl'))
+            state.events.put(lambda: vim.command('redrawstatus!'))
             return
         else:
             return
@@ -336,8 +339,9 @@ def update_loop():
 def vim_update():
     global state
 
-    while state.events.qsize() > 0:
-        state.events.get()()
+    if state.initialized:
+        while state.events.qsize() > 0:
+            state.events.get()()
 
 
 def get_kernel_state(vim_var):
