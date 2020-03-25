@@ -29,6 +29,8 @@ class State(object):
     kernel_state: int = KS_NOT_CONNECTED
     events: queue.Queue = queue.Queue()
 
+    execution_queue: queue.Queue = queue.Queue()
+
     main_buffer: vim.Buffer = None
 
     sign_ids_hold: Dict[int, List[int]] = {}
@@ -243,7 +245,8 @@ def evaluate(code):
         start_outputs()
     elif state.kernel_state == KS_BUSY:
         # TODO: add to execution queue, to be sent for execution whenever ready
-        pass
+        setsign_hold(state.current_execution_count+state.execution_queue.qsize()+1)
+        state.execution_queue.put(code)
     else:
         print("Invalid kernel state: %d" % state.kernel_state, sys.stderr)
         return
@@ -351,6 +354,11 @@ def update():
 
                 state.events.put(lambda: setsign_running2ok(
                                      state.current_execution_count))
+                if state.execution_queue.qsize() > 0:
+                    def next_from_queue():
+                        setsign_hold2running(state.current_execution_count+1)
+                        evaluate(state.execution_queue.get())
+                    state.events.put(next_from_queue)
             elif content['execution_state'] == 'busy':
                 state.kernel_state = KS_BUSY
             state.events.put(lambda: vim.command('redrawstatus!'))
