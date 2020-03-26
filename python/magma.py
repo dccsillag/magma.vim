@@ -35,14 +35,17 @@ class State(object):
     server_port: int = -1
     port: int = -1
 
+    has_error: bool = False
+
     execution_queue: queue.Queue = queue.Queue()
 
     main_buffer: vim.Buffer = None
+    main_window_id: int = -1
 
     sign_ids_hold: Dict[int, List[int]] = {}
     sign_ids_running: Dict[int, List[int]] = {}
     sign_ids_ok: Dict[int, List[int]] = {}
-    sign_ids_error: Dict[int, List[int]] = {}
+    sign_ids_err: Dict[int, List[int]] = {}
 
     def __del__(self):
         self.deinitialize()
@@ -59,6 +62,7 @@ class State(object):
                 kernel_name=kernel_name)
             self.kernel_state = KS_IDLE
             self.main_buffer = vim.current.buffer
+            self.main_window_id = vim.eval('win_getid()')
             self.initialized = True
 
             self.start_background_loop()
@@ -99,6 +103,7 @@ class State(object):
                 return
             self.kernel_state = KS_IDLE
             self.main_buffer = vim.current.buffer
+            self.main_window_id = vim.eval('win_getid()')
             self.initialized = True
 
             self.start_background_loop()
@@ -284,10 +289,11 @@ def evaluate(code):
                 'traceback': "",
             })
         setsign_running(state.current_execution_count)
+        state.has_error = False
         start_outputs()
     elif state.kernel_state == KS_BUSY:
-        # TODO: add to execution queue, to be sent for execution whenever ready
-        setsign_hold(state.current_execution_count+state.execution_queue.qsize()+1)
+        setsign_hold(
+                state.current_execution_count+state.execution_queue.qsize()+1)
         state.execution_queue.put(code)
     else:
         print("Invalid kernel state: %d" % state.kernel_state, sys.stderr)
@@ -306,14 +312,7 @@ def start_outputs():
     vim.eval('term_start(%r, '
              '{"term_name": "(magma) Out[%d]", "term_finish": "close"})'
              % (job, state.current_execution_count))
-
-
-def show_output():
-    global state
-
-    pass  # # if not evaluated:
-    pass  # #    evaluate
-    pass  # # show popup with evaluated code
+    vim.command('call win_gotoid(%s)' % state.main_window_id)
 
 
 def update():
@@ -341,6 +340,7 @@ def update():
                     'text': content['status'],
                 }
             elif content['status'] == 'error':
+                state.has_error = True
                 data = {
                     'type': 'error',
                     'error_type': content['ename'],
@@ -348,6 +348,7 @@ def update():
                     'traceback': content['traceback'],
                 }
             elif content['status'] == 'abort':
+                state.has_error = True
                 data = {
                     'type': 'error',
                     'error_type': "Aborted",
@@ -362,6 +363,7 @@ def update():
             }
             state.history[state.current_execution_count]['output'].append(data)
         elif message_type == 'error':
+            state.has_error = True
             data = {
                 'type': 'error',
                 'error_type': content['ename'],
@@ -399,13 +401,25 @@ def update():
                               % state.port,
                               json={'type': 'done'})
 
-                state.events.put(lambda: setsign_running2ok(
-                                     state.current_execution_count))
-                if state.execution_queue.qsize() > 0:
-                    def next_from_queue():
-                        setsign_hold2running(state.current_execution_count+1)
-                        evaluate(state.execution_queue.get())
-                    state.events.put(next_from_queue)
+                if state.has_error:
+                    state.events.put(lambda: setsign_running2err(
+                                         state.current_execution_count))
+                    # Clear the execution queue:
+                    while not state.execution_queue.empty():
+                        try:
+                            state.execution_queue.get(False)
+                        except queue.Empty:
+                            continue
+                        state.execution_queue.task_done()
+                else:
+                    state.events.put(lambda: setsign_running2ok(
+                                         state.current_execution_count))
+                    if state.execution_queue.qsize() > 0:
+                        def next_from_queue():
+                            setsign_hold2running(
+                                    state.current_execution_count+1)
+                            evaluate(state.execution_queue.get())
+                        state.events.put(next_from_queue)
             elif content['execution_state'] == 'busy':
                 state.kernel_state = KS_BUSY
             state.events.put(lambda: vim.command('redrawstatus!'))
@@ -601,4 +615,23 @@ def unsetsign_err(execution_count):
     del state.sign_ids_err[execution_count]
 
 
-# TODO: setsign_running@err
+def setsign_running2err(execution_count):
+    global state
+
+    state.sign_ids_err[execution_count] = []
+    for signid in state.sign_ids_running[execution_count]:
+        print(signid)
+        lineno = vim.eval('sign_getplaced(%s, {"group": "magma", "id": %s})'
+                          % (state.main_buffer.number, signid)
+                          )[0]['signs'][0]['lnum']
+        vim.command('sign unplace %s group=magma buffer=%s'
+                    % (signid, state.main_buffer.number))
+        vim.command('sign define magma_err_%d text=%d! texthl=MagmaErrSign'
+                    % (execution_count, execution_count))
+        signid = vim.eval('sign_place(0, "magma", "magma_err_%d",'
+                          '%s, {"lnum": %s})'
+                          % (execution_count,
+                             state.main_buffer.number,
+                             lineno))
+        state.sign_ids_err[execution_count].append(signid)
+    del state.sign_ids_running[execution_count]
