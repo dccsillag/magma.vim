@@ -24,8 +24,8 @@ def show_output(mimetype, content):
         with open(tmppath, 'wb') as tmpfile:
             decoded = codecs.decode(content.encode(), 'base64')
             tmpfile.write(decoded)
+        os.system('feh --image-bg white %s &' % tmppath)
         os.system('tiv %s' % tmppath)
-        os.system('feh --image-bg white %s' % tmppath)
     elif mimetype == 'text/html':
         subprocess.run(['w3m', '-dump', '-T', 'text/html'],
                        input=content,
