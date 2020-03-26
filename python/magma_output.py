@@ -76,10 +76,10 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             display_choose(body['content'])
         elif kind == 'error':
             has_output = True
-            print("%s: %s"
-                  % (body['error_type'], body['error_message']),
-                  file=sys.stderr)
-            print(body['traceback'], file=sys.stderr)
+            # print("%s: %s"
+            #       % (body['error_type'], body['error_message']),
+            #       file=sys.stderr)
+            print('\n'.join(body['traceback']), file=sys.stderr)
         elif kind == 'stdout':
             has_output = True
             sys.stdout.write(body['content'])
