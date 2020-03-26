@@ -14,9 +14,10 @@ import requests
 import vim
 
 KS_IDLE = 0
-KS_BUSY = 1
-KS_NOT_CONNECTED = 2
-KS_DEAD = 3
+KS_NONIDLE = 1
+KS_BUSY = 2
+KS_NOT_CONNECTED = 3
+KS_DEAD = 4
 
 HS_RUNNING = 0
 HS_DONE = 1
@@ -30,6 +31,8 @@ class State(object):
     background_loop = None
     background_server = None
     kernel_state: int = KS_NOT_CONNECTED
+
+    # general_lock: threading.Lock = threading.Lock()
 
     events: queue.Queue = queue.Queue()
     server_port: int = -1
@@ -199,9 +202,9 @@ def init_local():
 
         state.initialize_new(specs[choice-1].language)
 
-        print()
-        vim.command('echomsg "Successfully initialized kernel %s!"'
-                    % specs[choice-1].display_name)
+        print('Successfully initialized kernel %s!'
+              % specs[choice-1].display_name,
+              sys.stderr)
 
         return True
 
@@ -209,10 +212,12 @@ def init_local():
 def init_existing(connection_file):
     global state
 
+    state.acquire()
+
     if not state.initialized:
         state.initialize_remote(connection_file)
 
-        vim.command('echomsg "Successfully connected to the kernel!"')
+        print('Successfully connected to the kernel!')
 
         return True
 
@@ -223,7 +228,7 @@ def init_remote(host, connection_file):
     if not state.initialized:
         state.initialize_remote(connection_file, ssh=host)
 
-        vim.command('echomsg "Successfully connected to the remote kernel!"')
+        print('Successfully connected to the remote kernel!')
 
         return True
 
@@ -260,38 +265,12 @@ def evaluate(code):
                         % (sign['id'], state.main_buffer.number))
 
     if state.kernel_state == KS_IDLE:
+        state.kernel_state = KS_NONIDLE
+
         state.port = -1
 
-        msg_id = state.client.execute(code)
-
-        reply = state.client.get_shell_msg(msg_id)
-        content = reply['content']
-        status = content['status']
-
-        state.current_execution_count = content['execution_count']
-        state.history[state.current_execution_count] = {
-            'type': 'output',
-            'status': HS_RUNNING,
-            'output': []
-        }
-        if status == 'error':
-            state.history[state.current_execution_count]['output'].append({
-                'type': 'error',
-                'error_type': content['ename'],
-                'error_message': content['evalue'],
-                'traceback': content['traceback'],
-            })
-        elif status == 'abort':
-            state.history[state.current_execution_count]['output'].append({
-                'type': 'error',
-                'error_type': "Aborted",
-                'error_message': "Kernel aborted with no error message",
-                'traceback': "",
-            })
-        setsign_running(state.current_execution_count)
-        state.has_error = False
-        start_outputs()
-    elif state.kernel_state == KS_BUSY:
+        state.client.execute(code)
+    elif state.kernel_state == KS_BUSY or state.kernel_state == KS_NONIDLE:
         setsign_hold(
                 state.current_execution_count+state.execution_queue.qsize()+1)
         state.execution_queue.put(code)
@@ -321,19 +300,63 @@ def update():
     if not state.initialized:
         return
 
-    if state.port == -1:
-        return
-
     try:
         message = state.client.get_iopub_msg(timeout=0.25)
         if 'content' not in message or \
            'msg_type' not in message:
             return
 
-        # pprint(message)
         message_type = message['msg_type']
         content = message['content']
-        if message_type == 'execute_reply':
+        if message_type == 'execute_input':
+            state.current_execution_count = content['execution_count']
+            state.history[state.current_execution_count] = {
+                'type': 'output',
+                'status': HS_RUNNING,
+                'output': []
+            }
+
+            def initiate_execution():
+                setsign_running(state.current_execution_count)
+                state.has_error = False
+                start_outputs()
+            state.events.put(initiate_execution)
+            return
+        elif message_type == 'status':
+            if content['execution_state'] == 'idle':
+                requests.post('http://127.0.0.1:%d'
+                              % state.port,
+                              json={'type': 'done'})
+
+                if state.has_error:
+                    state.kernel_state = KS_IDLE
+                    state.events.put(lambda: setsign_running2err(
+                                         state.current_execution_count))
+                    # Clear the execution queue:
+                    while not state.execution_queue.empty():
+                        try:
+                            state.execution_queue.get(False)
+                        except queue.Empty:
+                            continue
+                        state.execution_queue.task_done()
+                else:
+                    state.events.put(lambda: setsign_running2ok(
+                                         state.current_execution_count))
+                    if state.execution_queue.qsize() > 0:
+                        state.kernel_state = KS_NONIDLE
+                        def next_from_queue():
+                            setsign_hold2running(
+                                    state.current_execution_count+1)
+                            state.kernel_state = KS_IDLE
+                            evaluate(state.execution_queue.get())
+                        state.events.put(next_from_queue)
+                    else:
+                        state.kernel_state = KS_IDLE
+            elif content['execution_state'] == 'busy':
+                state.kernel_state = KS_BUSY
+            state.events.put(lambda: vim.command('redrawstatus!'))
+            return
+        elif message_type == 'execute_reply' and state.port != -1:
             if content['status'] == 'ok':
                 data = {
                     'type': 'output',
@@ -356,13 +379,13 @@ def update():
                     'traceback': "",
                 }
             state.history[state.current_execution_count]['output'].append(data)
-        elif message_type == 'execute_result':
+        elif message_type == 'execute_result' and state.port != -1:
             data = {
                 'type': 'display',
                 'content': content['data'],
             }
             state.history[state.current_execution_count]['output'].append(data)
-        elif message_type == 'error':
+        elif message_type == 'error' and state.port != -1:
             state.has_error = True
             data = {
                 'type': 'error',
@@ -371,13 +394,13 @@ def update():
                 'traceback': content['traceback'],
             }
             state.history[state.current_execution_count]['output'].append(data)
-        elif message_type == 'display_data':
+        elif message_type == 'display_data' and state.port != -1:
             data = {
                 'type': 'display',
                 'content': content['data'],
             }
             state.history[state.current_execution_count]['output'].append(data)
-        elif message_type == 'stream':
+        elif message_type == 'stream' and state.port != -1:
             name = content['name']
             if name == 'stdout':
                 data = {
@@ -392,38 +415,6 @@ def update():
             else:
                 raise Exception("Unkown stream:name = '%s'" % name)
             state.history[state.current_execution_count]['output'].append(data)
-        elif message_type == 'execute_input':
-            return  # TODO
-        elif message_type == 'status':
-            if content['execution_state'] == 'idle':
-                state.kernel_state = KS_IDLE
-                requests.post('http://127.0.0.1:%d'
-                              % state.port,
-                              json={'type': 'done'})
-
-                if state.has_error:
-                    state.events.put(lambda: setsign_running2err(
-                                         state.current_execution_count))
-                    # Clear the execution queue:
-                    while not state.execution_queue.empty():
-                        try:
-                            state.execution_queue.get(False)
-                        except queue.Empty:
-                            continue
-                        state.execution_queue.task_done()
-                else:
-                    state.events.put(lambda: setsign_running2ok(
-                                         state.current_execution_count))
-                    if state.execution_queue.qsize() > 0:
-                        def next_from_queue():
-                            setsign_hold2running(
-                                    state.current_execution_count+1)
-                            evaluate(state.execution_queue.get())
-                        state.events.put(next_from_queue)
-            elif content['execution_state'] == 'busy':
-                state.kernel_state = KS_BUSY
-            state.events.put(lambda: vim.command('redrawstatus!'))
-            return
         else:
             return
 
@@ -525,9 +516,13 @@ def setsign_hold2running(execution_count):
 
     state.sign_ids_running[execution_count] = []
     for signid in state.sign_ids_hold[execution_count]:
-        lineno = vim.eval('sign_getplaced(%s, {"group": "magma", "id": %s})'
-                          % (state.main_buffer.number, signid)
-                          )[0]['signs'][0]['lnum']
+        try:
+            lineno = vim.eval('sign_getplaced(%s,'
+                              '{"group": "magma", "id": %s})'
+                              % (state.main_buffer.number, signid)
+                              )[0]['signs'][0]['lnum']
+        except IndexError:
+            continue
         vim.command('sign unplace %s group=magma buffer=%s'
                     % (signid, state.main_buffer.number))
         vim.command('sign define magma_running_%d text=%d@ texthl=MagmaRunningSign'
@@ -572,7 +567,6 @@ def setsign_running2ok(execution_count):
 
     state.sign_ids_ok[execution_count] = []
     for signid in state.sign_ids_running[execution_count]:
-        print(signid)
         lineno = vim.eval('sign_getplaced(%s, {"group": "magma", "id": %s})'
                           % (state.main_buffer.number, signid)
                           )[0]['signs'][0]['lnum']
@@ -620,7 +614,6 @@ def setsign_running2err(execution_count):
 
     state.sign_ids_err[execution_count] = []
     for signid in state.sign_ids_running[execution_count]:
-        print(signid)
         lineno = vim.eval('sign_getplaced(%s, {"group": "magma", "id": %s})'
                           % (state.main_buffer.number, signid)
                           )[0]['signs'][0]['lnum']
