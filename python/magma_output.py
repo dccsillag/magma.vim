@@ -15,7 +15,7 @@ import requests
 has_output = False
 
 
-def show_output(mimetype, content):
+def display_output(mimetype, content):
     if mimetype == 'text/plain':
         print(content)
     elif mimetype.startswith('image/'):
@@ -35,6 +35,20 @@ def show_output(mimetype, content):
         print("Example input:", file=sys.stderr)
         print(content)
         raise Exception("Unknown mimetype: %s" % mimetype)
+
+
+def display_choose(content):
+    if 'image/png' in content:
+        display_output('image/png', content['image/png'])
+    elif 'text/plain' in content:
+        display_output('text/plain', content['text/plain'])
+    elif 'text/html' in content:
+        display_output('text/html', content['text/html'])
+    else:
+        print("--------", file=sys.stderr)
+        print("Example input:", file=sys.stderr)
+        print(content)
+        raise Exception("Unmanageable mimetypes")
 
 
 class MyHandler(http.server.BaseHTTPRequestHandler):
@@ -59,8 +73,7 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             print(body['text'])
         elif kind == 'display':
             has_output = True
-            for mimetype, content in body['content'].items():
-                show_output(mimetype, content)
+            display_choose(body['content'])
         elif kind == 'error':
             has_output = True
             print("%s: %s"
