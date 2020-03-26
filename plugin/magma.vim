@@ -76,7 +76,7 @@ function MagmaUpdate(...)
 endfunction
 
 
-sign define magma_hold text=* texthl=CursorLineNr
+sign define magma_hold text=* texthl=MagmaHoldSign
 
 command! -nargs=? MagmaInit call s:MagmaInit(<f-args>)
 command! -nargs=+ MagmaRemoteInit call s:MagmaRemoteInit(<f-args>)
