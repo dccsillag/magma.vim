@@ -303,7 +303,8 @@ def start_outputs():
            state.server_port]
     #       '127.0.0.1', 10000 + state.current_execution_count]
 
-    vim.eval('term_start(%r, {"term_name": "(magma) Out[%d]"})'
+    vim.eval('term_start(%r, '
+             '{"term_name": "(magma) Out[%d]", "term_finish": "close"})'
              % (job, state.current_execution_count))
 
 

@@ -12,6 +12,9 @@ import tempfile
 import requests
 
 
+has_output = False
+
+
 def show_output(mimetype, content):
     if mimetype == 'text/plain':
         print(content)
@@ -43,6 +46,8 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"Hello World!")
 
     def do_POST(self):
+        global has_output
+
         content_length = int(self.headers['Content-length'])
         body = json.loads(self.rfile.read(content_length))
         self.send_response(202)
@@ -50,18 +55,23 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
 
         kind = body['type']
         if kind == 'output':
+            has_output = True
             print(body['text'])
         elif kind == 'display':
+            has_output = True
             for mimetype, content in body['content'].items():
                 show_output(mimetype, content)
         elif kind == 'error':
+            has_output = True
             print("%s: %s"
                   % (body['error_type'], body['error_message']),
                   file=sys.stderr)
             print(body['traceback'], file=sys.stderr)
         elif kind == 'stdout':
+            has_output = True
             sys.stdout.write(body['content'])
         elif kind == 'stderr':
+            has_output = True
             sys.stderr.write(body['content'])
         elif kind == 'done':
             raise KeyboardInterrupt
@@ -97,7 +107,15 @@ def main():
             # print("Serving at IP %s; port %d" % httpd.server_address)
             httpd.serve_forever()
     except KeyboardInterrupt:
-        return
+        try:
+            if has_output:
+                input()
+            else:
+                return
+        except KeyboardInterrupt:
+            return
+        except EOFError:
+            return
 
 
 if __name__ == '__main__':
