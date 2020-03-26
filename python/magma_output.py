@@ -1,13 +1,15 @@
-import sys
-import os
-import subprocess
+import argparse
+import codecs
 import http.server
 import json
-import socketserver
-import tempfile
 import mimetypes
-import codecs
-import argparse
+import os
+import socketserver
+import subprocess
+import sys
+import tempfile
+
+import requests
 
 
 def show_output(mimetype, content):
@@ -72,9 +74,12 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('parent',
+                        type=int,
+                        help="Port of the parent server")
     parser.add_argument('host',
                         type=str,
-                        default='localhost',
+                        default='127.0.0.1',
                         nargs='?',
                         help="Where to host the server")
     parser.add_argument('port',
@@ -86,6 +91,9 @@ def main():
 
     try:
         with socketserver.TCPServer(('', args.port), MyHandler) as httpd:
+            _, port = httpd.server_address
+            requests.post("http://127.0.0.1:%d" % args.parent,
+                          json={'port': port})
             # print("Serving at IP %s; port %d" % httpd.server_address)
             httpd.serve_forever()
     except KeyboardInterrupt:

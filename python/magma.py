@@ -1,10 +1,12 @@
+import socketserver
+import http.server
 import json
 import os
 import queue
 import sys
 import threading
 import time
-from typing import List, Dict
+from typing import Dict, List
 
 import jupyter_client
 import requests
@@ -26,8 +28,12 @@ class State(object):
     history: Dict[str, dict] = {}
     current_execution_count: int = 0
     background_loop = None
+    background_server = None
     kernel_state: int = KS_NOT_CONNECTED
+
     events: queue.Queue = queue.Queue()
+    server_port: int = -1
+    port: int = -1
 
     execution_queue: queue.Queue = queue.Queue()
 
@@ -56,6 +62,7 @@ class State(object):
             self.initialized = True
 
             self.start_background_loop()
+            self.start_background_server()
 
     def initialize_remote(self, connection_file, ssh=None):
         """
@@ -95,10 +102,22 @@ class State(object):
             self.initialized = True
 
             self.start_background_loop()
+            self.start_background_server()
 
     def start_background_loop(self):
         self.background_loop = threading.Thread(target=update_loop)
         self.background_loop.start()
+
+    def start_background_server(self):
+        def run_server():
+            try:
+                with socketserver.TCPServer(('', 0), MyHandler) as httpd:
+                    _, self.server_port = httpd.server_address
+                    httpd.serve_forever()
+            except KeyboardInterrupt:
+                return
+        self.background_server = threading.Thread(target=run_server)
+        self.background_server.start()
 
     def restart(self):
         """
@@ -122,8 +141,29 @@ class State(object):
             self.kernel_state = KS_NOT_CONNECTED
             self.main_buffer = None
             self.initialized = False
+            requests.post('http://127.0.0.1:%d' % self.server_port,
+                          json={'action': 'shutdown'})
 
             self.background_loop.join()
+            self.background_server.join()
+
+
+class MyHandler(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        global state
+
+        content_length = int(self.headers['Content-length'])
+        body = json.loads(self.rfile.read(content_length))
+        self.send_response(202)
+        self.end_headers()
+
+        if 'action' in body and body['action'] == 'shutdown':
+            raise KeyboardInterrupt
+
+        state.port = body['port']
+
+    def log_message(self, format, *args):
+        pass  # do nothing
 
 
 state = State()
@@ -215,6 +255,8 @@ def evaluate(code):
                         % (sign['id'], state.main_buffer.number))
 
     if state.kernel_state == KS_IDLE:
+        state.port = -1
+
         msg_id = state.client.execute(code)
 
         reply = state.client.get_shell_msg(msg_id)
@@ -258,7 +300,8 @@ def start_outputs():
     job = ['python3',
            os.path.join(os.path.dirname(os.path.realpath(__file__)),
                         'magma_output.py'),
-           '127.0.0.1', 10000 + state.current_execution_count]
+           state.server_port]
+    #       '127.0.0.1', 10000 + state.current_execution_count]
 
     vim.eval('term_start(%r, {"term_name": "(magma) Out[%d]"})'
              % (job, state.current_execution_count))
@@ -276,6 +319,9 @@ def update():
     global state
 
     if not state.initialized:
+        return
+
+    if state.port == -1:
         return
 
     try:
@@ -349,7 +395,7 @@ def update():
             if content['execution_state'] == 'idle':
                 state.kernel_state = KS_IDLE
                 requests.post('http://127.0.0.1:%d'
-                              % (10000 + state.current_execution_count),
+                              % state.port,
                               json={'type': 'done'})
 
                 state.events.put(lambda: setsign_running2ok(
@@ -367,7 +413,7 @@ def update():
             return
 
         requests.post('http://127.0.0.1:%d'
-                      % (10000 + state.current_execution_count),
+                      % state.port,
                       json=data)
     except queue.Empty:
         return
