@@ -41,6 +41,7 @@ class State(object):
     has_error: bool = False
 
     execution_queue: queue.Queue = queue.Queue()
+    code_lineno: str = ""  # Vim stores its ints as str in Python
 
     main_buffer: vim.Buffer = None
     main_window_id: int = -1
@@ -174,6 +175,19 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
         pass  # do nothing
 
 
+class RunInLineNo(object):
+    def __init__(self, lineno=None):
+        self.lineno = lineno
+
+    def __enter__(self):
+        self.current_line = vim.eval('getpos(".")')
+        if self.lineno is not None:
+            vim.command('normal %sG' % self.lineno)
+
+    def __exit__(self, *_):
+        vim.command('call setpos(".", %s)' % self.current_line)
+
+
 state = State()
 
 
@@ -239,7 +253,7 @@ def deinit():
     state.deinitialize()
 
 
-def evaluate(code):
+def evaluate(code, code_lineno):
     global state
 
     if not state.initialized:
@@ -258,22 +272,25 @@ def evaluate(code):
               file=sys.stderr)
         return False
 
-    for lineno, linestr in paragraph_iter():
-        signs_in_this_line = [sign for sign in signs if sign['lnum'] == lineno]
-        for sign in signs_in_this_line:
-            vim.command('sign unplace %s group=magma buffer=%s'
-                        % (sign['id'], state.main_buffer.number))
+    with RunInLineNo(code_lineno):
+        for lineno, linestr in paragraph_iter():
+            signs_in_this_line = [sign for sign in signs if sign['lnum'] == lineno]
+            for sign in signs_in_this_line:
+                vim.command('sign unplace %s group=magma buffer=%s'
+                            % (sign['id'], state.main_buffer.number))
 
     if state.kernel_state == KS_IDLE:
         state.kernel_state = KS_NONIDLE
 
         state.port = -1
+        state.code_lineno = code_lineno
 
         state.client.execute(code)
     elif state.kernel_state == KS_BUSY or state.kernel_state == KS_NONIDLE:
-        setsign_hold(
-                state.current_execution_count+state.execution_queue.qsize()+1)
-        state.execution_queue.put(code)
+        with RunInLineNo(code_lineno):
+            setsign_hold(
+                    state.current_execution_count+state.execution_queue.qsize()+1)
+        state.execution_queue.put((code, code_lineno))
     else:
         print("Invalid kernel state: %d" % state.kernel_state, sys.stderr)
         return
@@ -317,7 +334,9 @@ def update():
             }
 
             def initiate_execution():
-                setsign_running(state.current_execution_count)
+                with RunInLineNo(state.code_lineno):
+                    print("%s vs %s" % (state.code_lineno, vim.eval('getpos(".")')))
+                    setsign_running(state.current_execution_count)
                 state.has_error = False
                 start_outputs()
             state.events.put(initiate_execution)
@@ -344,11 +363,12 @@ def update():
                                          state.current_execution_count))
                     if state.execution_queue.qsize() > 0:
                         state.kernel_state = KS_NONIDLE
+
                         def next_from_queue():
                             setsign_hold2running(
                                     state.current_execution_count+1)
                             state.kernel_state = KS_IDLE
-                            evaluate(state.execution_queue.get())
+                            evaluate(*state.execution_queue.get())
                         state.events.put(next_from_queue)
                     else:
                         state.kernel_state = KS_IDLE
@@ -516,13 +536,10 @@ def setsign_hold2running(execution_count):
 
     state.sign_ids_running[execution_count] = []
     for signid in state.sign_ids_hold[execution_count]:
-        try:
-            lineno = vim.eval('sign_getplaced(%s,'
-                              '{"group": "magma", "id": %s})'
-                              % (state.main_buffer.number, signid)
-                              )[0]['signs'][0]['lnum']
-        except IndexError:
-            continue
+        lineno = vim.eval('sign_getplaced(%s,'
+                          '{"group": "magma", "id": %s})'
+                          % (state.main_buffer.number, signid)
+                          )[0]['signs'][0]['lnum']
         vim.command('sign unplace %s group=magma buffer=%s'
                     % (signid, state.main_buffer.number))
         vim.command('sign define magma_running_%d text=%d@ texthl=MagmaRunningSign'

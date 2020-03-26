@@ -57,13 +57,13 @@ function s:MagmaDeinit()
 endfunction
 
 function s:MagmaEvaluate(code)
-    python3 magma.evaluate(vim.eval("a:code"))
+    python3 magma.evaluate(vim.eval("a:code"), vim.eval('line(".")'))
 endfunction
 
 function s:MagmaShow()
     let l:code = s:GetParagraph()
 
-    python3 magma.evaluate(vim.eval('l:code'))
+    python3 magma.evaluate(vim.eval('l:code'), vim.eval('line(".")'))
 endfunction
 
 function MagmaState()
