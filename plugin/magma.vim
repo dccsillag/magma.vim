@@ -61,9 +61,7 @@ function s:MagmaEvaluate(code)
 endfunction
 
 function s:MagmaShow()
-    let l:code = s:GetParagraph()
-
-    python3 magma.evaluate(vim.eval('l:code'), vim.eval('line(".")'))
+    python3 magma.show_evaluated_output()
 endfunction
 
 function MagmaState()
@@ -86,8 +84,8 @@ command! -nargs=0 MagmaEvaluate call s:MagmaEvaluate(s:GetParagraph())
 
 let g:magma_timer = timer_start(100, 'MagmaUpdate', { 'repeat': -1 })
 
-nnoremap <Leader><Leader>p :MagmaPopup<CR>
 nnoremap <Leader><Leader><Leader> :MagmaEvaluate<CR>
+nnoremap <Leader><Leader>o :MagmaShow<CR>
 
 augroup magma
     autocmd!

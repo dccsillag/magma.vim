@@ -311,6 +311,51 @@ def start_outputs():
     vim.command('call win_gotoid(%s)' % state.main_window_id)
 
 
+def show_evaluated_output(manual=True):
+    global state
+
+    lineno = vim.eval('line(".")')
+
+    signname = vim.eval('sign_getplaced(%s, {"group": "magma", "lnum": %s})'
+                        % (state.main_buffer.number, lineno)
+                        )[0]['signs'][0]['name']
+
+    if signname == 'magma_hold':
+        if manual:
+            print("Requested paragraph is to be evaluated", sys.stderr)
+    elif signname.startswith('magma_running_'):
+        if manual:
+            print("Requested paragraph is being evaluated", sys.stderr)
+    elif signname.startswith('magma_err_'):
+        if manual:
+            print("Requested paragraph did not evaluate successfully",
+                  sys.stderr)
+    elif signname.startswith('magma_ok_'):
+        if state.kernel_state != KS_IDLE:
+            print("TODO: implement (in magma.vim) the ability to view output "
+                  "while the kernel is busy", sys.stderr)
+        else:
+            execution_count = int(signname[9:])
+
+            state.port = -1
+            start_outputs()
+
+            def forward_output():
+                while state.port == -1:
+                    time.sleep(0.1)
+
+                for data in state.history[execution_count]['output']:
+                    requests.post('http://127.0.0.1:%d'
+                                  % state.port,
+                                  json=data)
+
+                requests.post('http://127.0.0.1:%d'
+                              % state.port,
+                              json={'type': 'done'})
+
+            threading.Thread(target=forward_output).start()
+
+
 def update():
     global state
 
