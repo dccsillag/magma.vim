@@ -499,7 +499,10 @@ def update_loop():
     while True:
         if not state.initialized:
             break
-        update()
+        try:
+            update()
+        except Exception as e:
+            print(e, file=sys.stderr)
         time.sleep(0.5)
 
 
@@ -508,7 +511,10 @@ def vim_update():
 
     if state.initialized:
         while state.events.qsize() > 0:
-            state.events.get()()
+            try:
+                state.events.get()()
+            except Exception as e:
+                print(e, file=sys.stderr)
 
 
 def get_kernel_state(vim_var):
