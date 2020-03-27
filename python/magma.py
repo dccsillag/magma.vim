@@ -314,6 +314,9 @@ def start_outputs():
 def show_evaluated_output(manual=True):
     global state
 
+    if not state.initialized:
+        return
+
     lineno = vim.eval('line(".")')
 
     signname = vim.eval('sign_getplaced(%s, {"group": "magma", "lnum": %s})'
