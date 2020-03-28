@@ -64,6 +64,14 @@ function s:MagmaShow()
     python3 magma.show_evaluated_output()
 endfunction
 
+function s:MagmaLoad(path)
+    python3 magma.read_session_file(vim.eval('a:path'))
+endfunction
+
+function s:MagmaSave(path)
+    python3 magma.write_session_file(vim.eval('a:path'))
+endfunction
+
 function MagmaState()
     python3 magma.get_kernel_state('g:magma_kernel_state')
     return g:magma_kernel_state
@@ -81,6 +89,8 @@ command! -nargs=+ MagmaRemoteInit call s:MagmaRemoteInit(<f-args>)
 command! -nargs=0 MagmaDeinit call s:MagmaDeinit()
 command! -nargs=0 MagmaShow call s:MagmaShow()
 command! -nargs=0 MagmaEvaluate call s:MagmaEvaluate(s:GetParagraph())
+command! -nargs=1 MagmaLoad call s:MagmaLoad(<f-args>)
+command! -nargs=1 MagmaSave call s:MagmaSave(<f-args>)
 
 let g:magma_timer = timer_start(100, 'MagmaUpdate', { 'repeat': -1 })
 

@@ -297,6 +297,59 @@ def evaluate(code, code_lineno):
         return
 
 
+def read_session(session: dict):
+    global state
+
+    for sign in session['signs']:
+        defined_signs = vim.eval('sign_getdefined(%r)' % sign['name'])
+        if len(defined_signs) == 0:
+            if sign['name'] == 'magma_hold':
+                raise Exception("Somehow, the `magma_hold` sign is not defined.")
+            elif sign['name'].startswith('magma_running_'):
+                vim.command('sign define %s text=@@'
+                            ' texthl=MagmaRunningSign'
+                            % sign['name'])
+            elif sign['name'].startswith('magma_ok_'):
+                vim.command('sign define %s text=::'
+                            ' texthl=MagmaOkSign'
+                            % sign['name'])
+            elif sign['name'].startswith('magma_err_'):
+                vim.command('sign define %s text=!!'
+                            ' texthl=MagmaErrSign'
+                            % sign['name'])
+            else:
+                raise Exception("Unknown sign defined in MagmaLoad'ed JSON: %r"
+                                % sign['name'])
+        vim.eval('sign_place(%s, "magma", "%s",'
+                 '%s, {"lnum": %s})'
+                 % (sign['id'],
+                    sign['name'],
+                    state.main_buffer.number,
+                    sign['lnum']))
+
+    state.history = session['history']
+
+
+def write_session() -> dict:
+    return {
+            'signs': vim.eval('sign_getplaced(%s, {"group": "magma"})'
+                              % state.main_buffer.number)[0]['signs'],
+            'history': state.history,
+            }
+
+
+def read_session_file(path: str):
+    with open(path) as f:
+        session = json.load(f)
+        session['history'] = {int(k): v for k, v in session['history'].items()}
+        read_session(session)
+
+
+def write_session_file(path: str):
+    with open(path, 'w') as f:
+        json.dump(write_session(), f)
+
+
 def start_outputs():
     global state
 
@@ -567,7 +620,7 @@ def setsign_running(execution_count):
     state.sign_ids_running[execution_count] = []
     for lineno, linestr in paragraph_iter():
         vim.command('sign define magma_running_%d text=@@'
-                    'texthl=MagmaRunningSign'
+                    ' texthl=MagmaRunningSign'
                     % (execution_count))
         signid = vim.eval('sign_place(0, "magma", "magma_running_%d",'
                           '%s, {"lnum": %s})'
@@ -600,7 +653,7 @@ def setsign_hold2running(execution_count):
         vim.command('sign unplace %s group=magma buffer=%s'
                     % (signid, state.main_buffer.number))
         vim.command('sign define magma_running_%d text=@@'
-                    'texthl=MagmaRunningSign'
+                    ' texthl=MagmaRunningSign'
                     % (execution_count))
         signid = vim.eval('sign_place(0, "magma", "magma_running_%d",'
                           '%s, {"lnum": %s})'
