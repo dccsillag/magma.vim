@@ -1,3 +1,4 @@
+# vim: fdm=marker
 import socketserver
 import http.server
 import json
@@ -23,7 +24,7 @@ HS_RUNNING = 0
 HS_DONE = 1
 
 
-class State(object):
+class State(object):  # {{{
     initialized: bool = False
     client: jupyter_client.BlockingKernelClient = None
     history: Dict[str, dict] = {}
@@ -51,10 +52,10 @@ class State(object):
     sign_ids_ok: Dict[int, List[int]] = {}
     sign_ids_err: Dict[int, List[int]] = {}
 
-    def __del__(self):
-        self.deinitialize()
+    def __del__(self):  # {{{
+        self.deinitialize()  # }}}
 
-    def initialize_new(self, kernel_name):
+    def initialize_new(self, kernel_name):  # {{{
         """
         Initialize the client and a local kernel, if it isn't yet initialized.
         """
@@ -70,9 +71,9 @@ class State(object):
             self.initialized = True
 
             self.start_background_loop()
-            self.start_background_server()
+            self.start_background_server()  # }}}
 
-    def initialize_remote(self, connection_file, ssh=None):
+    def initialize_remote(self, connection_file, ssh=None):  # {{{
         """
         Initialize the client and connect to a kernel (possibly remote),
           if it isn't yet initialized.
@@ -111,13 +112,13 @@ class State(object):
             self.initialized = True
 
             self.start_background_loop()
-            self.start_background_server()
+            self.start_background_server()  # }}}
 
-    def start_background_loop(self):
+    def start_background_loop(self):  # {{{
         self.background_loop = threading.Thread(target=update_loop)
-        self.background_loop.start()
+        self.background_loop.start()  # }}}
 
-    def start_background_server(self):
+    def start_background_server(self):  # {{{
         def run_server():
             try:
                 with socketserver.TCPServer(('', 0), MyHandler) as httpd:
@@ -126,9 +127,9 @@ class State(object):
             except KeyboardInterrupt:
                 return
         self.background_server = threading.Thread(target=run_server)
-        self.background_server.start()
+        self.background_server.start()  # }}}
 
-    def restart(self):
+    def restart(self):  # {{{
         """
         Restart the kernel.
         """
@@ -138,9 +139,9 @@ class State(object):
             self.kernel_state = KS_NOT_CONNECTED
             self.client.shutdown(True)
             self.kernel_state = KS_IDLE
-            self.client.initialized = True
+            self.client.initialized = True  # }}}
 
-    def deinitialize(self):
+    def deinitialize(self):  # {{{
         """
         Deinitialize the client, if it is initialized.
         """
@@ -154,11 +155,11 @@ class State(object):
                           json={'action': 'shutdown'})
 
             self.background_loop.join()
-            self.background_server.join()
+            self.background_server.join()  # }}}}}}
 
 
-class MyHandler(http.server.BaseHTTPRequestHandler):
-    def do_POST(self):
+class MyHandler(http.server.BaseHTTPRequestHandler):  # {{{
+    def do_POST(self):  # {{{
         global state
 
         content_length = int(self.headers['Content-length'])
@@ -169,33 +170,33 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
         if 'action' in body and body['action'] == 'shutdown':
             raise KeyboardInterrupt
 
-        state.port = body['port']
+        state.port = body['port']  # }}}
 
-    def log_message(self, format, *args):
-        pass  # do nothing
+    def log_message(self, format, *args):  # {{{
+        pass  # do nothing}}}}}}
 
 
-class RunInLineNo(object):
-    def __init__(self, lineno=None):
-        self.lineno = lineno
+class RunInLineNo(object):  # {{{
+    def __init__(self, lineno=None):  # {{{
+        self.lineno = lineno  # }}}
 
-    def __enter__(self):
+    def __enter__(self):  # {{{
         self.current_line = vim.eval('getpos(".")')
         if self.lineno is not None:
-            vim.command('normal %sG' % self.lineno)
+            vim.command('normal %sG' % self.lineno)  # }}}
 
-    def __exit__(self, *_):
-        vim.command('call setpos(".", %s)' % self.current_line)
+    def __exit__(self, *_):  # {{{
+        vim.command('call setpos(".", %s)' % self.current_line)  # }}}}}}
 
 
 state = State()
 
 
-def setup_ssh_tunneling(host, connection_file):
-    jupyter_client.tunnel_to_kernel(connection_file, host)
+def setup_ssh_tunneling(host, connection_file):  # {{{
+    jupyter_client.tunnel_to_kernel(connection_file, host)  # }}}
 
 
-def init_local():
+def init_local():  # {{{
     global state
 
     if not state.initialized:
@@ -220,10 +221,10 @@ def init_local():
               % specs[choice-1].display_name,
               sys.stderr)
 
-        return True
+        return True  # }}}
 
 
-def init_existing(connection_file):
+def init_existing(connection_file):  # {{{
     global state
 
     state.acquire()
@@ -233,10 +234,10 @@ def init_existing(connection_file):
 
         print('Successfully connected to the kernel!')
 
-        return True
+        return True  # }}}
 
 
-def init_remote(host, connection_file):
+def init_remote(host, connection_file):  # {{{
     global state
 
     if not state.initialized:
@@ -244,16 +245,16 @@ def init_remote(host, connection_file):
 
         print('Successfully connected to the remote kernel!')
 
-        return True
+        return True  # }}}
 
 
-def deinit():
+def deinit():  # {{{
     global state
 
-    state.deinitialize()
+    state.deinitialize()  # }}}
 
 
-def evaluate(code, code_lineno):
+def evaluate(code, code_lineno):  # {{{
     global state
 
     if not state.initialized:
@@ -294,17 +295,17 @@ def evaluate(code, code_lineno):
         state.execution_queue.put((code, code_lineno))
     else:
         print("Invalid kernel state: %d" % state.kernel_state, sys.stderr)
-        return
+        return  # }}}
 
 
-def read_session(session: dict):
+def read_session(session: dict):  # {{{
     global state
 
     for sign in session['signs']:
         defined_signs = vim.eval('sign_getdefined(%r)' % sign['name'])
         if len(defined_signs) == 0:
             if sign['name'] == 'magma_hold':
-                raise Exception("Somehow, the `magma_hold` sign is not defined.")
+                raise Exception("Somehow, the magma_hold sign is not defined.")
             elif sign['name'].startswith('magma_running_'):
                 vim.command('sign define %s text=@@'
                             ' texthl=MagmaRunningSign'
@@ -327,30 +328,30 @@ def read_session(session: dict):
                     state.main_buffer.number,
                     sign['lnum']))
 
-    state.history = session['history']
+    state.history = session['history']  # }}}
 
 
-def write_session() -> dict:
+def write_session() -> dict:  # {{{
     return {
             'signs': vim.eval('sign_getplaced(%s, {"group": "magma"})'
                               % state.main_buffer.number)[0]['signs'],
             'history': state.history,
-            }
+            }  # }}}
 
 
-def read_session_file(path: str):
+def read_session_file(path: str):  # {{{
     with open(path) as f:
         session = json.load(f)
         session['history'] = {int(k): v for k, v in session['history'].items()}
-        read_session(session)
+        read_session(session)  # }}}
 
 
-def write_session_file(path: str):
+def write_session_file(path: str):  # {{{
     with open(path, 'w') as f:
-        json.dump(write_session(), f)
+        json.dump(write_session(), f)  # }}}
 
 
-def start_outputs():
+def start_outputs():  # {{{
     global state
 
     job = ['python3',
@@ -362,10 +363,10 @@ def start_outputs():
     vim.eval('term_start(%r, '
              '{"term_name": "(magma) Out[%d]", "term_finish": "close"})'
              % (job, state.current_execution_count))
-    vim.command('call win_gotoid(%s)' % state.main_window_id)
+    vim.command('call win_gotoid(%s)' % state.main_window_id)  # }}}
 
 
-def show_evaluated_output(manual=True):
+def show_evaluated_output(manual=True):  # {{{
     global state
 
     if not state.initialized:
@@ -410,10 +411,10 @@ def show_evaluated_output(manual=True):
                               % state.port,
                               json={'type': 'done'})
 
-            threading.Thread(target=forward_output).start()
+            threading.Thread(target=forward_output).start()  # }}}
 
 
-def update():
+def update():  # {{{
     global state
 
     if not state.initialized:
@@ -545,10 +546,10 @@ def update():
                       % state.port,
                       json=data)
     except queue.Empty:
-        return
+        return  # }}}
 
 
-def update_loop():
+def update_loop():  # {{{
     global state
 
     while True:
@@ -558,10 +559,10 @@ def update_loop():
             update()
         except Exception as e:
             print(e, file=sys.stderr)
-        time.sleep(0.5)
+        time.sleep(0.5)  # }}}
 
 
-def vim_update():
+def vim_update():  # {{{
     global state
 
     if state.initialized:
@@ -569,16 +570,16 @@ def vim_update():
             try:
                 state.events.get()()
             except Exception as e:
-                print(e, file=sys.stderr)
+                print(e, file=sys.stderr)  # }}}
 
 
-def get_kernel_state(vim_var):
+def get_kernel_state(vim_var):  # {{{
     global state
 
-    vim.command('let %s = %s' % (vim_var, state.kernel_state))
+    vim.command('let %s = %s' % (vim_var, state.kernel_state))  # }}}
 
 
-def paragraph_iter():
+def paragraph_iter():  # {{{
     vim.command('let l:cursor_pos = getpos(".")')
     vim.command('normal {')
     if vim.current.line == "":
@@ -589,10 +590,10 @@ def paragraph_iter():
         vim.command('normal j')
         if prev_linenr == vim.eval('line(".")'):
             break
-    vim.command('call setpos(".", l:cursor_pos)')
+    vim.command('call setpos(".", l:cursor_pos)')  # }}}
 
 
-def setsign_hold(execution_count):
+def setsign_hold(execution_count):  # {{{
     global state
 
     state.sign_ids_hold[execution_count] = []
@@ -600,10 +601,10 @@ def setsign_hold(execution_count):
         signid = vim.eval('sign_place(0, "magma", "magma_hold",'
                           '%s, {"lnum": %s})'
                           % (state.main_buffer.number, lineno))
-        state.sign_ids_hold[execution_count].append(signid)
+        state.sign_ids_hold[execution_count].append(signid)  # }}}
 
 
-def unsetsign_hold(execution_count):
+def unsetsign_hold(execution_count):  # {{{
     global state
 
     for signid in state.sign_ids_hold[execution_count]:
@@ -611,10 +612,10 @@ def unsetsign_hold(execution_count):
                     % (signid, state.main_buffer.number))
         # vim.command('sign unplace %s group=magma buffer=%s'
         #             % (signid, vim.current.buffer.number))
-    del state.sign_ids_hold[execution_count]
+    del state.sign_ids_hold[execution_count]  # }}}
 
 
-def setsign_running(execution_count):
+def setsign_running(execution_count):  # {{{
     global state
 
     state.sign_ids_running[execution_count] = []
@@ -627,10 +628,10 @@ def setsign_running(execution_count):
                           % (execution_count,
                              state.main_buffer.number,
                              lineno))
-        state.sign_ids_running[execution_count].append(signid)
+        state.sign_ids_running[execution_count].append(signid)  # }}}
 
 
-def unsetsign_running(execution_count):
+def unsetsign_running(execution_count):  # {{{
     global state
 
     for signid in state.sign_ids_running[execution_count]:
@@ -638,10 +639,10 @@ def unsetsign_running(execution_count):
                     % (signid, state.main_buffer.number))
         # vim.command('sign unplace %s group=magma buffer=%s'
         #             % (signid, vim.current.buffer.number))
-    del state.sign_ids_running[execution_count]
+    del state.sign_ids_running[execution_count]  # }}}
 
 
-def setsign_hold2running(execution_count):
+def setsign_hold2running(execution_count):  # {{{
     global state
 
     state.sign_ids_running[execution_count] = []
@@ -661,10 +662,10 @@ def setsign_hold2running(execution_count):
                              state.main_buffer.number,
                              lineno))
         state.sign_ids_running[execution_count].append(signid)
-    del state.sign_ids_hold[execution_count]
+    del state.sign_ids_hold[execution_count]  # }}}
 
 
-def setsign_ok(execution_count):
+def setsign_ok(execution_count):  # {{{
     global state
 
     state.sign_ids_ok[execution_count] = []
@@ -676,10 +677,10 @@ def setsign_ok(execution_count):
                           % (execution_count,
                              state.main_buffer.number,
                              lineno))
-        state.sign_ids_ok[execution_count].append(signid)
+        state.sign_ids_ok[execution_count].append(signid)  # }}}
 
 
-def unsetsign_ok(execution_count):
+def unsetsign_ok(execution_count):  # {{{
     global state
 
     for signid in state.sign_ids_ok[execution_count]:
@@ -687,10 +688,10 @@ def unsetsign_ok(execution_count):
                     % (signid, state.main_buffer.number))
         # vim.command('sign unplace %s group=magma buffer=%s'
         #             % (signid, vim.current.buffer.number))
-    del state.sign_ids_ok[execution_count]
+    del state.sign_ids_ok[execution_count]  # }}}
 
 
-def setsign_running2ok(execution_count):
+def setsign_running2ok(execution_count):  # {{{
     global state
 
     state.sign_ids_ok[execution_count] = []
@@ -708,10 +709,10 @@ def setsign_running2ok(execution_count):
                              state.main_buffer.number,
                              lineno))
         state.sign_ids_ok[execution_count].append(signid)
-    del state.sign_ids_running[execution_count]
+    del state.sign_ids_running[execution_count]  # }}}
 
 
-def setsign_err(execution_count):
+def setsign_err(execution_count):  # {{{
     global state
 
     state.sign_ids_err[execution_count] = []
@@ -723,10 +724,10 @@ def setsign_err(execution_count):
                           % (execution_count,
                              state.main_buffer.number,
                              lineno))
-        state.sign_ids_err[execution_count].append(signid)
+        state.sign_ids_err[execution_count].append(signid)  # }}}
 
 
-def unsetsign_err(execution_count):
+def unsetsign_err(execution_count):  # {{{
     global state
 
     for signid in state.sign_ids_err[execution_count]:
@@ -734,10 +735,10 @@ def unsetsign_err(execution_count):
                     % (signid, state.main_buffer.number))
         # vim.command('sign unplace %s group=magma buffer=%s'
         #             % (signid, vim.current.buffer.number))
-    del state.sign_ids_err[execution_count]
+    del state.sign_ids_err[execution_count]  # }}}
 
 
-def setsign_running2err(execution_count):
+def setsign_running2err(execution_count):  # {{{
     global state
 
     state.sign_ids_err[execution_count] = []
@@ -755,4 +756,4 @@ def setsign_running2err(execution_count):
                              state.main_buffer.number,
                              lineno))
         state.sign_ids_err[execution_count].append(signid)
-    del state.sign_ids_running[execution_count]
+    del state.sign_ids_running[execution_count]  # }}}
