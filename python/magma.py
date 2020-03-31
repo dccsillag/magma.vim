@@ -372,7 +372,7 @@ def write_session_file(path: str):  # {{{
         json.dump(write_session(), f)  # }}}
 
 
-def start_outputs(hide=True):  # {{{
+def start_outputs(hide, request_newline, allow_external):  # {{{
     global state
 
     job = ['python3',
@@ -381,7 +381,10 @@ def start_outputs(hide=True):  # {{{
            state.server_port]
     #       '127.0.0.1', 10000 + state.current_execution_count]
 
-    if hide:
+    # FIXME: remove this `if hide:`
+    if request_newline and not allow_external:
+        job.append("--semiquiet")
+    elif not request_newline and not allow_external:
         job.append("--quiet")
 
     # Create the output buffer (and the job)
@@ -394,7 +397,7 @@ def start_outputs(hide=True):  # {{{
                         state.current_execution_count,
                         int(hide),
                         state.current_execution_count))
-    vim.command('function MagmaOutbufSetNofile%d(...)\n'
+    vim.command('function! MagmaOutbufSetNofile%d(...)\n'
                 '  call setbufvar(%s, "&buftype", "nofile")\n'
                 'endfunction'
                 % (state.current_execution_count,
@@ -415,7 +418,7 @@ def start_outputs(hide=True):  # {{{
     # }}}
 
 
-def show_evaluated_output(manual=True):  # {{{
+def show_evaluated_output(withBang):  # {{{
     global state
 
     if not state.initialized:
@@ -428,15 +431,12 @@ def show_evaluated_output(manual=True):  # {{{
                         )[0]['signs'][0]['name']
 
     if signname == 'magma_hold':
-        if manual:
-            print("Requested paragraph is to be evaluated", sys.stderr)
+        print("Requested paragraph is to be evaluated", sys.stderr)
     elif signname.startswith('magma_running_'):
-        if manual:
-            print("Requested paragraph is being evaluated", sys.stderr)
+        print("Requested paragraph is being evaluated", sys.stderr)
     elif signname.startswith('magma_err_'):
-        if manual:
-            print("Requested paragraph did not evaluate successfully",
-                  sys.stderr)
+        print("Requested paragraph did not evaluate successfully",
+              sys.stderr)
     elif signname.startswith('magma_ok_'):
         if state.kernel_state != KS_IDLE:
             print("TODO: implement (in magma.vim) the ability to view output "
@@ -445,7 +445,10 @@ def show_evaluated_output(manual=True):  # {{{
             execution_count = int(signname[9:])
 
             state.port = -1
-            start_outputs()
+            if int(vim.eval('g:magma_preview_window_enabled')):
+                start_outputs(False, True, withBang)
+            else:
+                start_outputs(False, True, True)
 
             def forward_output():
                 while state.port == -1:
@@ -489,7 +492,9 @@ def update():  # {{{
                 with RunInLineNo(state.code_lineno):
                     setsign_running(state.current_execution_count)
                 state.has_error = False
-                start_outputs()
+                has_preview = bool(int(vim.eval(
+                    'g:magma_preview_window_enabled')))
+                start_outputs(has_preview, not has_preview, not has_preview)
             state.events.put(initiate_execution)
             return  # }}}
         elif message_type == 'status':  # {{{

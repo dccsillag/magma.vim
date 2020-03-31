@@ -66,8 +66,12 @@ function s:MagmaEvaluate(code)
     python3 magma.evaluate(vim.eval("a:code"), vim.eval('line(".")'))
 endfunction
 
-function s:MagmaShow()
-    python3 magma.show_evaluated_output()
+function s:MagmaShow(bang)
+    if a:bang == "!"
+        python3 magma.show_evaluated_output(True)
+    else
+        python3 magma.show_evaluated_output(False)
+    endif
 endfunction
 
 function s:MagmaLoad(path)
@@ -93,7 +97,7 @@ sign define magma_hold text=* texthl=MagmaHoldSign
 command! -nargs=? MagmaInit call s:MagmaInit(<f-args>)
 command! -nargs=+ MagmaRemoteInit call s:MagmaRemoteInit(<f-args>)
 command! -nargs=0 MagmaDeinit call s:MagmaDeinit()
-command! -nargs=0 MagmaShow call s:MagmaShow()
+command! -nargs=0 -bang MagmaShow call s:MagmaShow("<bang>")
 command! -nargs=0 MagmaEvaluate call s:MagmaEvaluate(s:GetParagraph())
 command! -nargs=1 MagmaLoad call s:MagmaLoad(<f-args>)
 command! -nargs=1 MagmaSave call s:MagmaSave(<f-args>)
@@ -106,6 +110,7 @@ let g:magma_timer = timer_start(100, 'MagmaUpdate', { 'repeat': -1 })
 
 nnoremap <Leader><Leader><Leader> :MagmaEvaluate<CR>
 nnoremap <Leader><Leader>o :MagmaShow<CR>
+nnoremap <Leader><Leader>O :MagmaShow!<CR>
 
 augroup magma
     autocmd!

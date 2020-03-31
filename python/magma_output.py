@@ -14,6 +14,7 @@ import requests
 
 has_output: bool = False
 quiet: bool = False
+semiquiet: bool = False
 
 
 def display_output(mimetype, content):
@@ -25,7 +26,7 @@ def display_output(mimetype, content):
         with open(tmppath, 'wb') as tmpfile:
             decoded = codecs.decode(content.encode(), 'base64')
             tmpfile.write(decoded)
-        if not quiet:
+        if not (quiet or semiquiet):
             os.system('feh --image-bg white %s &' % tmppath)
         os.system('tiv %s' % tmppath)
     elif mimetype == 'text/html':
@@ -98,7 +99,7 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
 
 
 def main():
-    global quiet
+    global quiet, semiquiet
 
     parser = argparse.ArgumentParser()
     parser.add_argument('parent',
@@ -116,10 +117,14 @@ def main():
                         help="Port to host the server")
     parser.add_argument('-q', '--quiet',
                         action='store_true',
+                        help="Don't open any external windows (e.g. feh) and don't have input() at the end")
+    parser.add_argument('-Q', '--semiquiet',
+                        action='store_true',
                         help="Don't open any external windows (e.g. feh)")
     args = parser.parse_args()
 
     quiet = args.quiet
+    semiquiet = args.semiquiet
 
     try:
         with socketserver.TCPServer(('', args.port), MyHandler) as httpd:
