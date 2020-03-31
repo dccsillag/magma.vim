@@ -134,15 +134,7 @@ def main():
             # print("Serving at IP %s; port %d" % httpd.server_address)
             httpd.serve_forever()
     except KeyboardInterrupt:
-        try:
-            if has_output and not quiet:
-                input()
-            else:
-                return
-        except KeyboardInterrupt:
-            return
-        except EOFError:
-            return
+        return
 
 
 if __name__ == '__main__':
