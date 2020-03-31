@@ -325,16 +325,19 @@ def read_session(session: dict):  # {{{
             if sign['name'] == 'magma_hold':
                 raise Exception("Somehow, the magma_hold sign is not defined.")
             elif sign['name'].startswith('magma_running_'):
-                vim.command('sign define %s text=@@'
+                vim.command('sign define %s text=@'
                             ' texthl=MagmaRunningSign'
+                            ' linehl=MagmaRunningLine'
                             % sign['name'])
             elif sign['name'].startswith('magma_ok_'):
-                vim.command('sign define %s text=::'
+                vim.command('sign define %s text=✓'
                             ' texthl=MagmaOkSign'
+                            ' linehl=MagmaOkLine'
                             % sign['name'])
             elif sign['name'].startswith('magma_err_'):
-                vim.command('sign define %s text=!!'
+                vim.command('sign define %s text=✗'
                             ' texthl=MagmaErrSign'
+                            ' linehl=MagmaErrLine'
                             % sign['name'])
             else:
                 raise Exception("Unknown sign defined in MagmaLoad'ed JSON: %r"
@@ -721,8 +724,9 @@ def setsign_running(execution_count):  # {{{
 
     state.sign_ids_running[execution_count] = []
     for lineno, linestr in paragraph_iter():
-        vim.command('sign define magma_running_%d text=@@'
+        vim.command('sign define magma_running_%d text=@'
                     ' texthl=MagmaRunningSign'
+                    ' linehl=MagmaRunningLine'
                     % (execution_count))
         signid = vim.eval('sign_place(0, "magma", "magma_running_%d",'
                           '%s, {"lnum": %s})'
@@ -754,8 +758,9 @@ def setsign_hold2running(execution_count):  # {{{
                           )[0]['signs'][0]['lnum']
         vim.command('sign unplace %s group=magma buffer=%s'
                     % (signid, state.main_buffer.number))
-        vim.command('sign define magma_running_%d text=@@'
+        vim.command('sign define magma_running_%d text=@'
                     ' texthl=MagmaRunningSign'
+                    ' linehl=MagmaRunningLine'
                     % (execution_count))
         signid = vim.eval('sign_place(0, "magma", "magma_running_%d",'
                           '%s, {"lnum": %s})'
@@ -771,7 +776,9 @@ def setsign_ok(execution_count):  # {{{
 
     state.sign_ids_ok[execution_count] = []
     for lineno, linestr in paragraph_iter():
-        vim.command('sign define magma_ok_%d text=:: texthl=MagmaOkSign'
+        vim.command('sign define magma_ok_%d text=✓'
+                    ' texthl=MagmaOkSign'
+                    ' linehl=MagmaOkLine'
                     % (execution_count))
         signid = vim.eval('sign_place(0, "magma", "magma_ok_%d",'
                           '%s, {"lnum": %s})'
@@ -802,7 +809,9 @@ def setsign_running2ok(execution_count):  # {{{
                           )[0]['signs'][0]['lnum']
         vim.command('sign unplace %s group=magma buffer=%s'
                     % (signid, state.main_buffer.number))
-        vim.command('sign define magma_ok_%d text=:: texthl=MagmaOkSign'
+        vim.command('sign define magma_ok_%d text=✓'
+                    ' texthl=MagmaOkSign'
+                    ' linehl=MagmaOkLine'
                     % (execution_count))
         signid = vim.eval('sign_place(0, "magma", "magma_ok_%d",'
                           '%s, {"lnum": %s})'
@@ -818,7 +827,9 @@ def setsign_err(execution_count):  # {{{
 
     state.sign_ids_err[execution_count] = []
     for lineno, linestr in paragraph_iter():
-        vim.command('sign define magma_err_%d text=!! texthl=MagmaErrSign'
+        vim.command('sign define magma_err_%d text=✗'
+                    ' texthl=MagmaErrSign'
+                    ' linehl=MagmaErrLine'
                     % (execution_count))
         signid = vim.eval('call sign_place(0, "magma", "magma_err_%d",'
                           '%s, {"lnum": %s})'
@@ -849,7 +860,9 @@ def setsign_running2err(execution_count):  # {{{
                           )[0]['signs'][0]['lnum']
         vim.command('sign unplace %s group=magma buffer=%s'
                     % (signid, state.main_buffer.number))
-        vim.command('sign define magma_err_%d text=!! texthl=MagmaErrSign'
+        vim.command('sign define magma_err_%d text=✗'
+                    ' texthl=MagmaErrSign'
+                    ' linehl=MagmaErrLine'
                     % (execution_count))
         signid = vim.eval('sign_place(0, "magma", "magma_err_%d",'
                           '%s, {"lnum": %s})'
