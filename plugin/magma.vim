@@ -16,6 +16,12 @@ sys.path.insert(0, python_root_dir)
 import magma
 EOF
 
+" Helpers
+
+function s:GlobalOption(name, default_value)
+    execute('let g:' . a:name . ' = ' . a:default_value)
+endfunction
+
 " VimL stuff
 
 function s:GetParagraph()
@@ -92,6 +98,10 @@ command! -nargs=0 MagmaEvaluate call s:MagmaEvaluate(s:GetParagraph())
 command! -nargs=1 MagmaLoad call s:MagmaLoad(<f-args>)
 command! -nargs=1 MagmaSave call s:MagmaSave(<f-args>)
 
+" Create the options:
+
+call s:GlobalOption("magma_preview_window_enabled", 1)
+
 let g:magma_timer = timer_start(100, 'MagmaUpdate', { 'repeat': -1 })
 
 nnoremap <Leader><Leader><Leader> :MagmaEvaluate<CR>
@@ -100,5 +110,5 @@ nnoremap <Leader><Leader>o :MagmaShow<CR>
 augroup magma
     autocmd!
     " TODO: add more commands for automatically running :MagmaDeinit ↓↓↓↓↓
-    autocmd! VimLeave * MagmaDeinit
+    autocmd VimLeave * MagmaDeinit
 augroup END

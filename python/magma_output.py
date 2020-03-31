@@ -12,7 +12,8 @@ import tempfile
 import requests
 
 
-has_output = False
+has_output: bool = False
+quiet: bool = False
 
 
 def display_output(mimetype, content):
@@ -24,7 +25,8 @@ def display_output(mimetype, content):
         with open(tmppath, 'wb') as tmpfile:
             decoded = codecs.decode(content.encode(), 'base64')
             tmpfile.write(decoded)
-        os.system('feh --image-bg white %s &' % tmppath)
+        if not quiet:
+            os.system('feh --image-bg white %s &' % tmppath)
         os.system('tiv %s' % tmppath)
     elif mimetype == 'text/html':
         subprocess.run(['w3m', '-dump', '-T', 'text/html'],
@@ -96,6 +98,8 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
 
 
 def main():
+    global quiet
+
     parser = argparse.ArgumentParser()
     parser.add_argument('parent',
                         type=int,
@@ -110,7 +114,12 @@ def main():
                         default=0,
                         nargs='?',
                         help="Port to host the server")
+    parser.add_argument('-q', '--quiet',
+                        action='store_true',
+                        help="Don't open any external windows (e.g. feh)")
     args = parser.parse_args()
+
+    quiet = args.quiet
 
     try:
         with socketserver.TCPServer(('', args.port), MyHandler) as httpd:
@@ -121,7 +130,7 @@ def main():
             httpd.serve_forever()
     except KeyboardInterrupt:
         try:
-            if has_output:
+            if has_output and not quiet:
                 input()
             else:
                 return

@@ -14,6 +14,7 @@ import requests
 
 import vim
 
+
 KS_IDLE = 0
 KS_NONIDLE = 1
 KS_BUSY = 2
@@ -46,6 +47,9 @@ class State(object):  # {{{
 
     main_buffer: vim.Buffer = None
     main_window_id: int = -1
+    preview_empty_buffer: vim.Buffer = None
+    preview_window_id: int = -1
+    output_buffer_numbers: Dict[int, int] = {}
 
     sign_ids_hold: Dict[int, List[int]] = {}
     sign_ids_running: Dict[int, List[int]] = {}
@@ -68,6 +72,13 @@ class State(object):  # {{{
             self.kernel_state = KS_IDLE
             self.main_buffer = vim.current.buffer
             self.main_window_id = vim.eval('win_getid()')
+
+            vim.command('new')
+            vim.command('setl nobuflisted')
+            self.preview_empty_buffer = vim.current.buffer
+            self.preview_window_id = vim.eval('win_getid()')
+            vim.command('call win_gotoid(%s)' % self.main_window_id)
+
             self.initialized = True
 
             self.start_background_loop()
@@ -109,6 +120,13 @@ class State(object):  # {{{
             self.kernel_state = KS_IDLE
             self.main_buffer = vim.current.buffer
             self.main_window_id = vim.eval('win_getid()')
+
+            vim.command('new')
+            vim.command('setl nobuflisted')
+            self.preview_empty_buffer = vim.current.buffer
+            self.preview_window_id = vim.eval('win_getid()')
+            vim.command('call win_gotoid(%s)' % self.main_window_id)
+
             self.initialized = True
 
             self.start_background_loop()
@@ -351,7 +369,7 @@ def write_session_file(path: str):  # {{{
         json.dump(write_session(), f)  # }}}
 
 
-def start_outputs():  # {{{
+def start_outputs(hide=True):  # {{{
     global state
 
     job = ['python3',
@@ -360,10 +378,38 @@ def start_outputs():  # {{{
            state.server_port]
     #       '127.0.0.1', 10000 + state.current_execution_count]
 
-    vim.eval('term_start(%r, '
-             '{"term_name": "(magma) Out[%d]", "term_finish": "close"})'
-             % (job, state.current_execution_count))
-    vim.command('call win_gotoid(%s)' % state.main_window_id)  # }}}
+    if hide:
+        job.append("--quiet")
+
+    # Create the output buffer (and the job)
+    bufno = vim.eval('term_start(%r, {'
+                     ' "term_name": "(magma) Out[%d]",'
+                     ' "hidden": %d,'
+                     ' "exit_cb": "MagmaOutbufSetNofile%d",'
+                     '})'
+                     % (job,
+                        state.current_execution_count,
+                        int(hide),
+                        state.current_execution_count))
+    vim.command('function MagmaOutbufSetNofile%d(...)\n'
+                '  call setbufvar(%s, "&buftype", "nofile")\n'
+                'endfunction'
+                % (state.current_execution_count,
+                   bufno))
+    vim.command('call setbufvar(%s, "&buflisted", 0)' % bufno)
+    # vim.command('new')
+    # bufno = vim.eval('bufnr()')
+    # job = vim.eval('job_start(%r, {'
+    #                ' "out_io": "buffer",'
+    #                ' "out_buf": %s,'
+    #                ' "out_modifiable": 0'
+    #                '})'
+    #                % (job, bufno))
+    # vim.command('set buftype=nofile')
+    # vim.command('set nobuflisted')
+    vim.command('call win_gotoid(%s)' % state.main_window_id)
+    state.history[state.current_execution_count]['buffer_number'] = bufno
+    # }}}
 
 
 def show_evaluated_output(manual=True):  # {{{
@@ -428,25 +474,23 @@ def update():  # {{{
 
         message_type = message['msg_type']
         content = message['content']
-        if message_type == 'execute_input':
+        if message_type == 'execute_input':  # {{{
             state.current_execution_count = content['execution_count']
             state.history[state.current_execution_count] = {
                 'type': 'output',
                 'status': HS_RUNNING,
-                'output': []
+                'output': [],
             }
 
             def initiate_execution():
                 with RunInLineNo(state.code_lineno):
-                    print("%s vs %s" % (state.code_lineno,
-                                        vim.eval('getpos(".")')))
                     setsign_running(state.current_execution_count)
                 state.has_error = False
                 start_outputs()
             state.events.put(initiate_execution)
-            return
-        elif message_type == 'status':
-            if content['execution_state'] == 'idle':
+            return  # }}}
+        elif message_type == 'status':  # {{{
+            if content['execution_state'] == 'idle':  # {{{
                 requests.post('http://127.0.0.1:%d'
                               % state.port,
                               json={'type': 'done'})
@@ -475,41 +519,41 @@ def update():  # {{{
                             evaluate(*state.execution_queue.get())
                         state.events.put(next_from_queue)
                     else:
-                        state.kernel_state = KS_IDLE
-            elif content['execution_state'] == 'busy':
-                state.kernel_state = KS_BUSY
+                        state.kernel_state = KS_IDLE  # }}}
+            elif content['execution_state'] == 'busy':  # {{{
+                state.kernel_state = KS_BUSY  # }}}
             state.events.put(lambda: vim.command('redrawstatus!'))
-            return
-        elif message_type == 'execute_reply' and state.port != -1:
-            if content['status'] == 'ok':
+            return  # }}}
+        elif message_type == 'execute_reply' and state.port != -1:  # {{{
+            if content['status'] == 'ok':  # {{{
                 data = {
                     'type': 'output',
                     'text': content['status'],
-                }
-            elif content['status'] == 'error':
+                }  # }}}
+            elif content['status'] == 'error':  # {{{
                 state.has_error = True
                 data = {
                     'type': 'error',
                     'error_type': content['ename'],
                     'error_message': content['evalue'],
                     'traceback': content['traceback'],
-                }
-            elif content['status'] == 'abort':
+                }  # }}}
+            elif content['status'] == 'abort':  # {{{
                 state.has_error = True
                 data = {
                     'type': 'error',
                     'error_type': "Aborted",
                     'error_message': "Kernel aborted with no error message",
                     'traceback': "",
-                }
-            state.history[state.current_execution_count]['output'].append(data)
-        elif message_type == 'execute_result' and state.port != -1:
+                }  # }}}
+            state.history[state.current_execution_count]['output'].append(data)  # }}}
+        elif message_type == 'execute_result' and state.port != -1:  # {{{
             data = {
                 'type': 'display',
                 'content': content['data'],
             }
-            state.history[state.current_execution_count]['output'].append(data)
-        elif message_type == 'error' and state.port != -1:
+            state.history[state.current_execution_count]['output'].append(data)  # }}}
+        elif message_type == 'error' and state.port != -1:  # {{{
             state.has_error = True
             data = {
                 'type': 'error',
@@ -518,13 +562,15 @@ def update():  # {{{
                 'traceback': content['traceback'],
             }
             state.history[state.current_execution_count]['output'].append(data)
-        elif message_type == 'display_data' and state.port != -1:
+            # }}}
+        elif message_type == 'display_data' and state.port != -1:  # {{{
             data = {
                 'type': 'display',
                 'content': content['data'],
             }
             state.history[state.current_execution_count]['output'].append(data)
-        elif message_type == 'stream' and state.port != -1:
+            # }}}
+        elif message_type == 'stream' and state.port != -1:  # {{{
             name = content['name']
             if name == 'stdout':
                 data = {
@@ -539,8 +585,9 @@ def update():  # {{{
             else:
                 raise Exception("Unkown stream:name = '%s'" % name)
             state.history[state.current_execution_count]['output'].append(data)
-        else:
-            return
+            # }}}
+        else:  # {{{
+            return  # }}}
 
         requests.post('http://127.0.0.1:%d'
                       % state.port,
@@ -570,7 +617,61 @@ def vim_update():  # {{{
             try:
                 state.events.get()()
             except Exception as e:
-                print(e, file=sys.stderr)  # }}}
+                print(e, file=sys.stderr)
+        update_preview_window()  # }}}
+
+
+def update_preview_window():  # {{{
+    global state
+
+    if not state.initialized or \
+       state.preview_window_id == -1 or \
+       int(vim.eval('win_id2win(%s)' % state.preview_window_id)) == -1:
+        return
+
+    signs = vim.eval('sign_getplaced(%s,'
+                     '{"group": "magma", "lnum": line(".")})'
+                     % state.main_buffer.number)[0]['signs']
+
+    if len(signs) == 0:
+        if vim.current.line == "":
+            vim.command('call win_execute(%s, "b %s")'
+                        % (state.preview_window_id,
+                           state.preview_empty_buffer.number))
+        return
+
+    assert len(signs) == 1
+
+    sign_name = signs[0]['name']
+
+    if sign_name.startswith('magma_running_'):
+        execution_count = int(sign_name[14:])
+    elif sign_name.startswith('magma_ok_'):
+        execution_count = int(sign_name[9:])
+    elif sign_name.startswith('magma_err_'):
+        execution_count = int(sign_name[10:])
+    else:
+        vim.command('call win_execute(%s, "b %s")'
+                    % (state.preview_window_id,
+                       state.preview_empty_buffer.number))
+        return
+
+    if execution_count not in state.history or \
+       'buffer_number' not in state.history[execution_count]:
+        vim.command('call win_execute(%s, "b %s")'
+                    % (state.preview_window_id,
+                       state.preview_empty_buffer.number))
+        return
+
+    bufnum = state.history[execution_count]['buffer_number']
+
+    vim.command('call win_execute(%s, "b %s")'
+                % (state.preview_window_id,
+                   state.preview_empty_buffer.number))
+    if int(vim.eval('bufexists(%s)' % bufnum)):
+        vim.command('call win_execute(%s, "b %s")'
+                    % (state.preview_window_id, bufnum))
+    # }}}
 
 
 def get_kernel_state(vim_var):  # {{{
