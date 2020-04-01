@@ -25,25 +25,46 @@ HS_RUNNING = 0
 HS_DONE = 1
 
 
+class Locked(object):  # {{{
+    def __init__(self, var):  # {{{
+        self.var = var
+        self.lock = threading.Lock()  # }}}
+
+    def get(self):  # {{{
+        with self.lock:
+            return self.var  # }}}
+
+    def set(self, newvar):  # {{{
+        with self.lock:
+            self.var = newvar  # }}}
+
+    def __enter__(self, *args):  # {{{
+        self.lock.__enter__(*args)
+        return self.var  # }}}
+
+    def __exit__(self, *args):  # {{{
+        return self.lock.__exit__(*args)  # }}}}}}
+
+
 class State(object):  # {{{
-    initialized: bool = False
+    initialized = Locked(False)
     client: jupyter_client.BlockingKernelClient = None
-    history: Dict[str, dict] = {}
-    current_execution_count: int = 0
+    history = Locked({})
+    current_execution_count = Locked(0)
     background_loop = None
     background_server = None
-    kernel_state: int = KS_NOT_CONNECTED
+    kernel_state = Locked(KS_NOT_CONNECTED)
 
     # general_lock: threading.Lock = threading.Lock()
 
     events: queue.Queue = queue.Queue()
     server_port: int = -1
-    port: int = -1
+    port = Locked(-1)
 
-    has_error: bool = False
+    has_error = Locked(False)
 
     execution_queue: queue.Queue = queue.Queue()
-    code_lineno: str = ""  # Vim stores its ints as str in Python
+    code_lineno = Locked("")  # Vim stores its ints as str in Python
 
     main_buffer: vim.Buffer = None
     main_window_id: int = -1
@@ -64,12 +85,12 @@ class State(object):  # {{{
         Initialize the client and a local kernel, if it isn't yet initialized.
         """
 
-        if not self.initialized:
+        if not self.initialized.get():
             # self.client = jupyter_client.run_kernel(kernel_name=kernel_name)
             # self.client = jupyter_client.BlockingKernelClient()
             _, self.client = jupyter_client.manager.start_new_kernel(
                 kernel_name=kernel_name)
-            self.kernel_state = KS_IDLE
+            self.kernel_state.set(KS_IDLE)
             self.main_buffer = vim.current.buffer
             self.main_window_id = vim.eval('win_getid()')
 
@@ -79,7 +100,7 @@ class State(object):  # {{{
             self.preview_window_id = vim.eval('win_getid()')
             vim.command('call win_gotoid(%s)' % self.main_window_id)
 
-            self.initialized = True
+            self.initialized.set(True)
 
             self.start_background_loop()
             self.start_background_server()  # }}}
@@ -90,7 +111,7 @@ class State(object):  # {{{
           if it isn't yet initialized.
         """
 
-        if not self.initialized:
+        if not self.initialized.get():
             self.client = jupyter_client.BlockingKernelClient()
             if ssh is None:
                 self.client.load_connection_file(connection_file)
@@ -115,9 +136,10 @@ class State(object):  # {{{
                 self.client.wait_for_ready(timeout=60)
             except RuntimeError as err:
                 self.client.stop_channels()
-                print("Could not connect to existing kernel: %s" % err)
+                print("Could not connect to existing kernel: %s" % err,
+                      file=sys.stderr)
                 return
-            self.kernel_state = KS_IDLE
+            self.kernel_state.set(KS_IDLE)
             self.main_buffer = vim.current.buffer
             self.main_window_id = vim.eval('win_getid()')
 
@@ -127,7 +149,7 @@ class State(object):  # {{{
             self.preview_window_id = vim.eval('win_getid()')
             vim.command('call win_gotoid(%s)' % self.main_window_id)
 
-            self.initialized = True
+            self.initialized.set(True)
 
             self.start_background_loop()
             self.start_background_server()  # }}}
@@ -152,11 +174,11 @@ class State(object):  # {{{
         Restart the kernel.
         """
 
-        if self.initialized:
+        if self.initialized.get():
             self.client.initialized = False
-            self.kernel_state = KS_NOT_CONNECTED
+            self.kernel_state.set(KS_NOT_CONNECTED)
             self.client.shutdown(True)
-            self.kernel_state = KS_IDLE
+            self.kernel_state.set(KS_IDLE)
             self.client.initialized = True  # }}}
 
     def deinitialize(self):  # {{{
@@ -164,12 +186,14 @@ class State(object):  # {{{
         Deinitialize the client, if it is initialized.
         """
 
-        if self.initialized:
+        if self.initialized.get():
             self.client.shutdown()
-            self.kernel_state = KS_NOT_CONNECTED
+            self.kernel_state.set(KS_NOT_CONNECTED)
             self.main_buffer = None
-            self.initialized = False
-            requests.post('http://127.0.0.1:%d' % self.server_port,
+            self.initialized.set(False)
+            # FIXME: possible concurrency issue due to `self.server_port`:
+            requests.post('http://127.0.0.1:%d'
+                          % self.server_port,
                           json={'action': 'shutdown'})
 
             self.background_loop.join()
@@ -188,7 +212,7 @@ class MyHandler(http.server.BaseHTTPRequestHandler):  # {{{
         if 'action' in body and body['action'] == 'shutdown':
             raise KeyboardInterrupt
 
-        state.port = body['port']  # }}}
+        state.port.set(body['port'])  # }}}
 
     def log_message(self, format, *args):  # {{{
         pass  # do nothing}}}}}}
@@ -217,7 +241,7 @@ def setup_ssh_tunneling(host, connection_file):  # {{{
 def init_local():  # {{{
     global state
 
-    if not state.initialized:
+    if not state.initialized.get():
         # Select from available kernels
         # # List them
         kernelspecmanager = jupyter_client.kernelspec.KernelSpecManager()
@@ -236,8 +260,7 @@ def init_local():  # {{{
         state.initialize_new(specs[choice-1].language)
 
         print('Successfully initialized kernel %s!'
-              % specs[choice-1].display_name,
-              sys.stderr)
+              % specs[choice-1].display_name)
 
         return True  # }}}
 
@@ -247,7 +270,7 @@ def init_existing(connection_file):  # {{{
 
     state.acquire()
 
-    if not state.initialized:
+    if not state.initialized.get():
         state.initialize_remote(connection_file)
 
         print('Successfully connected to the kernel!')
@@ -258,7 +281,7 @@ def init_existing(connection_file):  # {{{
 def init_remote(host, connection_file):  # {{{
     global state
 
-    if not state.initialized:
+    if not state.initialized.get():
         state.initialize_remote(connection_file, ssh=host)
 
         print('Successfully connected to the remote kernel!')
@@ -275,7 +298,7 @@ def deinit():  # {{{
 def evaluate(code, code_lineno):  # {{{
     global state
 
-    if not state.initialized:
+    if not state.initialized.get():
         return
 
     # Check if we can actually evaluate this code (e.g. isn't already in queue)
@@ -299,20 +322,22 @@ def evaluate(code, code_lineno):  # {{{
                 vim.command('sign unplace %s group=magma buffer=%s'
                             % (sign['id'], state.main_buffer.number))
 
-    if state.kernel_state == KS_IDLE:
-        state.kernel_state = KS_NONIDLE
+    if state.kernel_state.get() == KS_IDLE:
+        state.kernel_state.set(KS_NONIDLE)
 
-        state.port = -1
-        state.code_lineno = code_lineno
+        state.port.set(-1)
+        state.code_lineno.set(code_lineno)
 
         state.client.execute(code)
-    elif state.kernel_state == KS_BUSY or state.kernel_state == KS_NONIDLE:
+    elif state.kernel_state.get() in (KS_BUSY, KS_NONIDLE):
         with RunInLineNo(code_lineno):
             setsign_hold(
-                state.current_execution_count+state.execution_queue.qsize()+1)
+                state.current_execution_count.get() +
+                state.execution_queue.qsize()+1)
         state.execution_queue.put((code, code_lineno))
     else:
-        print("Invalid kernel state: %d" % state.kernel_state, sys.stderr)
+        print("Invalid kernel state: %d" % state.kernel_state.get(),
+              file=sys.stderr)
         return  # }}}
 
 
@@ -349,14 +374,14 @@ def read_session(session: dict):  # {{{
                     state.main_buffer.number,
                     sign['lnum']))
 
-    state.history = session['history']  # }}}
+    state.history.set(session['history'])  # }}}
 
 
 def write_session() -> dict:  # {{{
     return {
             'signs': vim.eval('sign_getplaced(%s, {"group": "magma"})'
                               % state.main_buffer.number)[0]['signs'],
-            'history': state.history,
+            'history': state.history.get(),
             }  # }}}
 
 
@@ -381,7 +406,6 @@ def start_outputs(hide, request_newline, allow_external):  # {{{
            state.server_port]
     #       '127.0.0.1', 10000 + state.current_execution_count]
 
-    # FIXME: remove this `if hide:`
     if request_newline and not allow_external:
         job.append("--semiquiet")
     elif not request_newline and not allow_external:
@@ -394,13 +418,13 @@ def start_outputs(hide, request_newline, allow_external):  # {{{
                      ' "exit_cb": "MagmaOutbufSetNofile%d",'
                      '})'
                      % (job,
-                        state.current_execution_count,
+                        state.current_execution_count.get(),
                         int(hide),
-                        state.current_execution_count))
+                        state.current_execution_count.get()))
     vim.command('function! MagmaOutbufSetNofile%d(...)\n'
                 '  call setbufvar(%s, "&buftype", "nofile")\n'
                 'endfunction'
-                % (state.current_execution_count,
+                % (state.current_execution_count.get(),
                    bufno))
     vim.command('call setbufvar(%s, "&buflisted", 0)' % bufno)
     # vim.command('new')
@@ -414,14 +438,15 @@ def start_outputs(hide, request_newline, allow_external):  # {{{
     # vim.command('set buftype=nofile')
     # vim.command('set nobuflisted')
     vim.command('call win_gotoid(%s)' % state.main_window_id)
-    state.history[state.current_execution_count]['buffer_number'] = bufno
+    with state.history as history:
+        history[state.current_execution_count.get()]['buffer_number'] = bufno
     # }}}
 
 
 def show_evaluated_output(withBang):  # {{{
     global state
 
-    if not state.initialized:
+    if not state.initialized.get():
         return
 
     lineno = vim.eval('line(".")')
@@ -431,36 +456,37 @@ def show_evaluated_output(withBang):  # {{{
                         )[0]['signs'][0]['name']
 
     if signname == 'magma_hold':
-        print("Requested paragraph is to be evaluated", sys.stderr)
+        print("Requested paragraph is to be evaluated", file=sys.stderr)
     elif signname.startswith('magma_running_'):
-        print("Requested paragraph is being evaluated", sys.stderr)
+        print("Requested paragraph is being evaluated", file=sys.stderr)
     elif signname.startswith('magma_err_'):
         print("Requested paragraph did not evaluate successfully",
-              sys.stderr)
+              file=sys.stderr)
     elif signname.startswith('magma_ok_'):
-        if state.kernel_state != KS_IDLE:
+        if state.kernel_state.get() != KS_IDLE:
             print("TODO: implement (in magma.vim) the ability to view output "
-                  "while the kernel is busy", sys.stderr)
+                  "while the kernel is busy", file=sys.stderr)
         else:
             execution_count = int(signname[9:])
 
-            state.port = -1
+            state.port.set(-1)
             if int(vim.eval('g:magma_preview_window_enabled')):
                 start_outputs(False, True, withBang)
             else:
                 start_outputs(False, True, True)
 
             def forward_output():
-                while state.port == -1:
+                while state.port.get() == -1:
                     time.sleep(0.1)
 
-                for data in state.history[execution_count]['output']:
-                    requests.post('http://127.0.0.1:%d'
-                                  % state.port,
-                                  json=data)
+                with state.history as history:
+                    for data in history[execution_count]['output']:
+                        requests.post('http://127.0.0.1:%d'
+                                      % state.port.get(),
+                                      json=data)
 
                 requests.post('http://127.0.0.1:%d'
-                              % state.port,
+                              % state.port.get(),
                               json={'type': 'done'})
 
             threading.Thread(target=forward_output).start()  # }}}
@@ -469,7 +495,7 @@ def show_evaluated_output(withBang):  # {{{
 def update():  # {{{
     global state
 
-    if not state.initialized:
+    if not state.initialized.get():
         return
 
     try:
@@ -481,17 +507,18 @@ def update():  # {{{
         message_type = message['msg_type']
         content = message['content']
         if message_type == 'execute_input':  # {{{
-            state.current_execution_count = content['execution_count']
-            state.history[state.current_execution_count] = {
-                'type': 'output',
-                'status': HS_RUNNING,
-                'output': [],
-            }
+            state.current_execution_count.set(content['execution_count'])
+            with state.history as history:
+                history[state.current_execution_count.get()] = {
+                    'type': 'output',
+                    'status': HS_RUNNING,
+                    'output': [],
+                }
 
             def initiate_execution():
-                with RunInLineNo(state.code_lineno):
-                    setsign_running(state.current_execution_count)
-                state.has_error = False
+                with RunInLineNo(state.code_lineno.get()):
+                    setsign_running(state.current_execution_count.get())
+                state.has_error.set(False)
                 has_preview = bool(int(vim.eval(
                     'g:magma_preview_window_enabled')))
                 start_outputs(has_preview, not has_preview, not has_preview)
@@ -499,14 +526,17 @@ def update():  # {{{
             return  # }}}
         elif message_type == 'status':  # {{{
             if content['execution_state'] == 'idle':  # {{{
+                while state.port.get() == -1:
+                    time.sleep(0.1)
+
                 requests.post('http://127.0.0.1:%d'
-                              % state.port,
+                              % state.port.get(),
                               json={'type': 'done'})
 
-                if state.has_error:
-                    state.kernel_state = KS_IDLE
+                if state.has_error.get():
+                    state.kernel_state.set(KS_IDLE)
                     state.events.put(lambda: setsign_running2err(
-                                         state.current_execution_count))
+                                         state.current_execution_count.get()))
                     # Clear the execution queue:
                     while not state.execution_queue.empty():
                         try:
@@ -516,30 +546,30 @@ def update():  # {{{
                         state.execution_queue.task_done()
                 else:
                     state.events.put(lambda: setsign_running2ok(
-                                         state.current_execution_count))
+                                         state.current_execution_count.get()))
                     if state.execution_queue.qsize() > 0:
-                        state.kernel_state = KS_NONIDLE
+                        state.kernel_state.set(KS_NONIDLE)
 
                         def next_from_queue():
                             setsign_hold2running(
-                                    state.current_execution_count+1)
-                            state.kernel_state = KS_IDLE
+                                    state.current_execution_count.get()+1)
+                            state.kernel_state.set(KS_IDLE)
                             evaluate(*state.execution_queue.get())
                         state.events.put(next_from_queue)
                     else:
-                        state.kernel_state = KS_IDLE  # }}}
+                        state.kernel_state.set(KS_IDLE)  # }}}
             elif content['execution_state'] == 'busy':  # {{{
-                state.kernel_state = KS_BUSY  # }}}
+                state.kernel_state.set(KS_BUSY)  # }}}
             state.events.put(lambda: vim.command('redrawstatus!'))
             return  # }}}
-        elif message_type == 'execute_reply' and state.port != -1:  # {{{
+        elif message_type == 'execute_reply' and state.port.get() != -1:  # {{{
             if content['status'] == 'ok':  # {{{
                 data = {
                     'type': 'output',
                     'text': content['status'],
                 }  # }}}
             elif content['status'] == 'error':  # {{{
-                state.has_error = True
+                state.has_error.set(True)
                 data = {
                     'type': 'error',
                     'error_type': content['ename'],
@@ -547,38 +577,46 @@ def update():  # {{{
                     'traceback': content['traceback'],
                 }  # }}}
             elif content['status'] == 'abort':  # {{{
-                state.has_error = True
+                state.has_error.set(True)
                 data = {
                     'type': 'error',
                     'error_type': "Aborted",
                     'error_message': "Kernel aborted with no error message",
                     'traceback': "",
                 }  # }}}
-            state.history[state.current_execution_count]['output'].append(data)  # }}}
-        elif message_type == 'execute_result' and state.port != -1:  # {{{
+            with state.history as history:
+                history[state.current_execution_count.get()]['output'] \
+                    .append(data)  # }}}
+        elif message_type == 'execute_result' and state.port.get() != -1:  # {{{
             data = {
                 'type': 'display',
                 'content': content['data'],
             }
-            state.history[state.current_execution_count]['output'].append(data)  # }}}
-        elif message_type == 'error' and state.port != -1:  # {{{
-            state.has_error = True
+            with state.history as history:
+                history[state.current_execution_count.get()]['output'] \
+                    .append(data)  # }}}
+        elif message_type == 'error' and state.port.get() != -1:  # {{{
+            state.has_error.set(True)
             data = {
                 'type': 'error',
                 'error_type': content['ename'],
                 'error_message': content['evalue'],
                 'traceback': content['traceback'],
             }
-            state.history[state.current_execution_count]['output'].append(data)
+            with state.history as history:
+                history[state.current_execution_count.get()]['output'] \
+                    .append(data)
             # }}}
-        elif message_type == 'display_data' and state.port != -1:  # {{{
+        elif message_type == 'display_data' and state.port.get() != -1:  # {{{
             data = {
                 'type': 'display',
                 'content': content['data'],
             }
-            state.history[state.current_execution_count]['output'].append(data)
+            with state.history as history:
+                history[state.current_execution_count.get()]['output'] \
+                    .append(data)
             # }}}
-        elif message_type == 'stream' and state.port != -1:  # {{{
+        elif message_type == 'stream' and state.port.get() != -1:  # {{{
             name = content['name']
             if name == 'stdout':
                 data = {
@@ -592,14 +630,17 @@ def update():  # {{{
                 }
             else:
                 raise Exception("Unkown stream:name = '%s'" % name)
-            state.history[state.current_execution_count]['output'].append(data)
+            with state.history as history:
+                history[state.current_execution_count.get()]['output'] \
+                    .append(data)
             # }}}
         else:  # {{{
             return  # }}}
 
-        requests.post('http://127.0.0.1:%d'
-                      % state.port,
-                      json=data)
+        if state.port.get() != -1:
+            requests.post('http://127.0.0.1:%d'
+                          % state.port.get(),
+                          json=data)
     except queue.Empty:
         return  # }}}
 
@@ -608,31 +649,26 @@ def update_loop():  # {{{
     global state
 
     while True:
-        if not state.initialized:
+        if not state.initialized.get():
             break
-        try:
-            update()
-        except Exception as e:
-            print(e, file=sys.stderr)
-        time.sleep(0.5)  # }}}
+
+        update()
+        time.sleep(0.5)  # XXX }}}
 
 
 def vim_update():  # {{{
     global state
 
-    if state.initialized:
+    if state.initialized.get():
         while state.events.qsize() > 0:
-            try:
-                state.events.get()()
-            except Exception as e:
-                print(e, file=sys.stderr)
+            state.events.get()()
         update_preview_window()  # }}}
 
 
 def update_preview_window():  # {{{
     global state
 
-    if not state.initialized or \
+    if not state.initialized.get() or \
        state.preview_window_id == -1 or \
        int(vim.eval('win_id2win(%s)' % state.preview_window_id)) == -1:
         return
@@ -664,14 +700,15 @@ def update_preview_window():  # {{{
                        state.preview_empty_buffer.number))
         return
 
-    if execution_count not in state.history or \
-       'buffer_number' not in state.history[execution_count]:
-        vim.command('call win_execute(%s, "b %s")'
-                    % (state.preview_window_id,
-                       state.preview_empty_buffer.number))
-        return
+    with state.history as history:
+        if execution_count not in history or \
+           'buffer_number' not in history[execution_count]:
+            vim.command('call win_execute(%s, "b %s")'
+                        % (state.preview_window_id,
+                           state.preview_empty_buffer.number))
+            return
 
-    bufnum = state.history[execution_count]['buffer_number']
+        bufnum = history[execution_count]['buffer_number']
 
     vim.command('call win_execute(%s, "b %s")'
                 % (state.preview_window_id,
@@ -685,7 +722,7 @@ def update_preview_window():  # {{{
 def get_kernel_state(vim_var):  # {{{
     global state
 
-    vim.command('let %s = %s' % (vim_var, state.kernel_state))  # }}}
+    vim.command('let %s = %s' % (vim_var, state.kernel_state.get()))  # }}}
 
 
 def paragraph_iter():  # {{{
