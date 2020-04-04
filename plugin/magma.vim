@@ -107,6 +107,7 @@ command! -nargs=1 MagmaSave call s:MagmaSave(<f-args>)
 call s:GlobalOption("magma_preview_window_enabled", 1)
 
 let g:magma_timer = timer_start(100, 'MagmaUpdate', { 'repeat': -1 })
+call timer_pause(g:magma_timer, 1)
 
 nnoremap <Leader><Leader><Leader> :MagmaEvaluate<CR>
 nnoremap <Leader><Leader>o :MagmaShow<CR>

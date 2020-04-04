@@ -19,7 +19,6 @@ KS_IDLE = 0
 KS_NONIDLE = 1
 KS_BUSY = 2
 KS_NOT_CONNECTED = 3
-KS_DEAD = 4
 
 HS_RUNNING = 0
 HS_DONE = 1
@@ -61,6 +60,7 @@ class State(object):  # {{{
     server_port: int = -1
     port = Locked(-1)
 
+    iopub_queue: queue.Queue = queue.Queue()
     has_error = Locked(False)
 
     execution_queue: queue.Queue = queue.Queue()
@@ -99,6 +99,8 @@ class State(object):  # {{{
             self.preview_empty_buffer = vim.current.buffer
             self.preview_window_id = vim.eval('win_getid()')
             vim.command('call win_gotoid(%s)' % self.main_window_id)
+
+            vim.command('call timer_pause(g:magma_timer, 0)')
 
             self.initialized.set(True)
 
@@ -149,6 +151,8 @@ class State(object):  # {{{
             self.preview_window_id = vim.eval('win_getid()')
             vim.command('call win_gotoid(%s)' % self.main_window_id)
 
+            vim.command('call timer_pause(g:magma_timer, 0)')
+
             self.initialized.set(True)
 
             self.start_background_loop()
@@ -195,6 +199,8 @@ class State(object):  # {{{
             requests.post('http://127.0.0.1:%d'
                           % self.server_port,
                           json={'action': 'shutdown'})
+
+            vim.command('call timer_pause(g:magma_timer, 1)')
 
             self.background_loop.join()
             self.background_server.join()  # }}}}}}
@@ -497,7 +503,11 @@ def update():  # {{{
         return
 
     try:
-        message = state.client.get_iopub_msg(timeout=0.25)
+        if state.iopub_queue.empty():
+            message = state.client.get_iopub_msg(timeout=0.25)
+        else:
+            message = state.iopub_queue.get()
+
         if 'content' not in message or \
            'msg_type' not in message:
             return
@@ -633,13 +643,15 @@ def update():  # {{{
                 history[state.current_execution_count.get()]['output'] \
                     .append(data)
             # }}}
+        elif state.port.get() == -1:
+            state.iopub_queue.put(message)
+            return
         else:  # {{{
             return  # }}}
 
-        if state.port.get() != -1:
-            requests.post('http://127.0.0.1:%d'
-                          % state.port.get(),
-                          json=data)
+        requests.post('http://127.0.0.1:%d'
+                      % state.port.get(),
+                      json=data)
     except queue.Empty:
         return  # }}}
 
