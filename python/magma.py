@@ -268,8 +268,6 @@ def init_local():  # {{{
 def init_existing(connection_file):  # {{{
     global state
 
-    state.acquire()
-
     if not state.initialized.get():
         state.initialize_remote(connection_file)
 
@@ -302,9 +300,7 @@ def evaluate(code, code_lineno):  # {{{
         return
 
     # Check if we can actually evaluate this code (e.g. isn't already in queue)
-    signs = vim.eval('sign_getplaced(%s, {"group": "magma"})'
-                     % (state.main_buffer.number)
-                     )[0]['signs']
+    signs = getsigns_inbuffer()
     if any(sign['id'] in state.sign_ids_hold for sign in signs):
         print("Trying to re-evaluate a line that is on hold",
               file=sys.stderr)
@@ -451,9 +447,11 @@ def show_evaluated_output(withBang):  # {{{
 
     lineno = vim.eval('line(".")')
 
-    signname = vim.eval('sign_getplaced(%s, {"group": "magma", "lnum": %s})'
-                        % (state.main_buffer.number, lineno)
-                        )[0]['signs'][0]['name']
+    signs = getsigns_line(lineno)
+    if len(signs) == 0:
+        print("No output to show", file=sys.stderr)
+        return
+    signname = signs[0]['name']
 
     if signname == 'magma_hold':
         print("Requested paragraph is to be evaluated", file=sys.stderr)
@@ -535,7 +533,7 @@ def update():  # {{{
 
                 if state.has_error.get():
                     state.kernel_state.set(KS_IDLE)
-                    state.events.put(lambda: setsign_running2err(
+                    state.events.put(lambda: chsign_running2err(
                                          state.current_execution_count.get()))
                     # Clear the execution queue:
                     while not state.execution_queue.empty():
@@ -545,13 +543,13 @@ def update():  # {{{
                             continue
                         state.execution_queue.task_done()
                 else:
-                    state.events.put(lambda: setsign_running2ok(
+                    state.events.put(lambda: chsign_running2ok(
                                          state.current_execution_count.get()))
                     if state.execution_queue.qsize() > 0:
                         state.kernel_state.set(KS_NONIDLE)
 
                         def next_from_queue():
-                            setsign_hold2running(
+                            chsign_hold2running(
                                     state.current_execution_count.get()+1)
                             state.kernel_state.set(KS_IDLE)
                             evaluate(*state.execution_queue.get())
@@ -587,7 +585,8 @@ def update():  # {{{
             with state.history as history:
                 history[state.current_execution_count.get()]['output'] \
                     .append(data)  # }}}
-        elif message_type == 'execute_result' and state.port.get() != -1:  # {{{
+        elif (message_type == 'execute_result' and  # {{{
+              state.port.get() != -1):
             data = {
                 'type': 'display',
                 'content': content['data'],
@@ -673,9 +672,7 @@ def update_preview_window():  # {{{
        int(vim.eval('win_id2win(%s)' % state.preview_window_id)) == -1:
         return
 
-    signs = vim.eval('sign_getplaced(%s,'
-                     '{"group": "magma", "lnum": line(".")})'
-                     % state.main_buffer.number)[0]['signs']
+    signs = getsigns_line()
 
     if len(signs) == 0:
         if vim.current.line == "":
@@ -725,6 +722,9 @@ def get_kernel_state(vim_var):  # {{{
     vim.command('let %s = %s' % (vim_var, state.kernel_state.get()))  # }}}
 
 
+# Iterate over the current paragraph
+
+
 def paragraph_iter():  # {{{
     vim.command('let l:cursor_pos = getpos(".")')
     vim.command('normal {')
@@ -739,177 +739,187 @@ def paragraph_iter():  # {{{
     vim.command('call setpos(".", l:cursor_pos)')  # }}}
 
 
-def setsign_hold(execution_count):  # {{{
-    global state
-
-    state.sign_ids_hold[execution_count] = []
-    for lineno, linestr in paragraph_iter():
-        signid = vim.eval('sign_place(0, "magma", "magma_hold",'
-                          '%s, {"lnum": %s})'
-                          % (state.main_buffer.number, lineno))
-        state.sign_ids_hold[execution_count].append(signid)  # }}}
+# Sign functions:
 
 
-def unsetsign_hold(execution_count):  # {{{
-    global state
-
-    for signid in state.sign_ids_hold[execution_count]:
-        vim.command('sign unplace %s group=magma buffer=%s'
-                    % (signid, state.main_buffer.number))
-        # vim.command('sign unplace %s group=magma buffer=%s'
-        #             % (signid, vim.current.buffer.number))
-    del state.sign_ids_hold[execution_count]  # }}}
+# # Query:
 
 
-def setsign_running(execution_count):  # {{{
-    global state
+def getsigns_inbuffer():  # {{{
+    signs = vim.eval('sign_getplaced(%s, {"group": "magma"})'
+                     % (state.main_buffer.number))
 
-    state.sign_ids_running[execution_count] = []
-    for lineno, linestr in paragraph_iter():
-        vim.command('sign define magma_running_%d text=@'
-                    ' texthl=MagmaRunningSign'
-                    ' linehl=MagmaRunningLine'
-                    % (execution_count))
-        signid = vim.eval('sign_place(0, "magma", "magma_running_%d",'
-                          '%s, {"lnum": %s})'
-                          % (execution_count,
-                             state.main_buffer.number,
-                             lineno))
-        state.sign_ids_running[execution_count].append(signid)  # }}}
+    if len(signs) == 0:
+        return []
+    else:
+        return signs[0]['signs']  # }}}
 
 
-def unsetsign_running(execution_count):  # {{{
-    global state
+def getsigns_line(lineno=None):  # {{{
+    if lineno is None:
+        signs = vim.eval('sign_getplaced(%s,'
+                         ' {"group": "magma","lnum": line(".")})'
+                         % (state.main_buffer.number))
+    else:
+        signs = vim.eval('sign_getplaced(%s, {"group": "magma","lnum": %s})'
+                         % (state.main_buffer.number, lineno))
 
-    for signid in state.sign_ids_running[execution_count]:
-        vim.command('sign unplace %s group=magma buffer=%s'
-                    % (signid, state.main_buffer.number))
-        # vim.command('sign unplace %s group=magma buffer=%s'
-        #             % (signid, vim.current.buffer.number))
-    del state.sign_ids_running[execution_count]  # }}}
-
-
-def setsign_hold2running(execution_count):  # {{{
-    global state
-
-    state.sign_ids_running[execution_count] = []
-    for signid in state.sign_ids_hold[execution_count]:
-        lineno = vim.eval('sign_getplaced(%s,'
-                          '{"group": "magma", "id": %s})'
-                          % (state.main_buffer.number, signid)
-                          )[0]['signs'][0]['lnum']
-        vim.command('sign unplace %s group=magma buffer=%s'
-                    % (signid, state.main_buffer.number))
-        vim.command('sign define magma_running_%d text=@'
-                    ' texthl=MagmaRunningSign'
-                    ' linehl=MagmaRunningLine'
-                    % (execution_count))
-        signid = vim.eval('sign_place(0, "magma", "magma_running_%d",'
-                          '%s, {"lnum": %s})'
-                          % (execution_count,
-                             state.main_buffer.number,
-                             lineno))
-        state.sign_ids_running[execution_count].append(signid)
-    del state.sign_ids_hold[execution_count]  # }}}
+    if len(signs) == 0:
+        return []
+    else:
+        return signs[0]['signs']  # }}}
 
 
-def setsign_ok(execution_count):  # {{{
-    global state
-
-    state.sign_ids_ok[execution_count] = []
-    for lineno, linestr in paragraph_iter():
-        vim.command('sign define magma_ok_%d text=✓'
-                    ' texthl=MagmaOkSign'
-                    ' linehl=MagmaOkLine'
-                    % (execution_count))
-        signid = vim.eval('sign_place(0, "magma", "magma_ok_%d",'
-                          '%s, {"lnum": %s})'
-                          % (execution_count,
-                             state.main_buffer.number,
-                             lineno))
-        state.sign_ids_ok[execution_count].append(signid)  # }}}
+# # Modify:
 
 
-def unsetsign_ok(execution_count):  # {{{
-    global state
+def setsign(state_sign_storage, sign_text, sign_texthl, sign_linehl):  # {{{
+    def inner(gen_sign_name):  # {{{
+        def func(execution_count):  # {{{
+            global state
 
-    for signid in state.sign_ids_ok[execution_count]:
-        vim.command('sign unplace %s group=magma buffer=%s'
-                    % (signid, state.main_buffer.number))
-        # vim.command('sign unplace %s group=magma buffer=%s'
-        #             % (signid, vim.current.buffer.number))
-    del state.sign_ids_ok[execution_count]  # }}}
+            sign_name = gen_sign_name(execution_count)
 
+            state_sign_storage[execution_count] = []
+            for lineno, linestr in paragraph_iter():
+                if not vim.eval('sign_getdefined("%s")'
+                                % sign_name):
+                    vim.command('sign define %s text=%s'
+                                ' texthl=%s'
+                                ' linehl=%s'
+                                % (sign_name,
+                                   sign_text,
+                                   sign_texthl,
+                                   sign_linehl))
+                signid = vim.eval('sign_place(0, "magma", "%s",'
+                                  ' %s, {"lnum": %s})'
+                                  % (sign_name,
+                                     state.main_buffer.number,
+                                     lineno))
+                state_sign_storage[execution_count].append(signid)  # }}}
 
-def setsign_running2ok(execution_count):  # {{{
-    global state
+        return func  # }}}
 
-    state.sign_ids_ok[execution_count] = []
-    for signid in state.sign_ids_running[execution_count]:
-        lineno = vim.eval('sign_getplaced(%s, {"group": "magma", "id": %s})'
-                          % (state.main_buffer.number, signid)
-                          )[0]['signs'][0]['lnum']
-        vim.command('sign unplace %s group=magma buffer=%s'
-                    % (signid, state.main_buffer.number))
-        vim.command('sign define magma_ok_%d text=✓'
-                    ' texthl=MagmaOkSign'
-                    ' linehl=MagmaOkLine'
-                    % (execution_count))
-        signid = vim.eval('sign_place(0, "magma", "magma_ok_%d",'
-                          '%s, {"lnum": %s})'
-                          % (execution_count,
-                             state.main_buffer.number,
-                             lineno))
-        state.sign_ids_ok[execution_count].append(signid)
-    del state.sign_ids_running[execution_count]  # }}}
+    return inner  # }}}
 
 
-def setsign_err(execution_count):  # {{{
-    global state
+def unsetsign(state_sign_storage):  # {{{
+    def inner(gen_sign_name):  # {{{
+        def func(execution_count):  # {{{
+            global state
 
-    state.sign_ids_err[execution_count] = []
-    for lineno, linestr in paragraph_iter():
-        vim.command('sign define magma_err_%d text=✗'
-                    ' texthl=MagmaErrSign'
-                    ' linehl=MagmaErrLine'
-                    % (execution_count))
-        signid = vim.eval('call sign_place(0, "magma", "magma_err_%d",'
-                          '%s, {"lnum": %s})'
-                          % (execution_count,
-                             state.main_buffer.number,
-                             lineno))
-        state.sign_ids_err[execution_count].append(signid)  # }}}
+            for signid in state_sign_storage[execution_count]:
+                vim.command('sign unplace %s group=magma buffer=%s'
+                            % (signid, state.main_buffer.number))
+            del state_sign_storage[execution_count]  # }}}
+
+        return func  # }}}
+
+    return inner  # }}}
 
 
-def unsetsign_err(execution_count):  # {{{
-    global state
+def chsign(state_sign_storage, new_state_sign_storage,  # {{{
+           sign_text, sign_texthl, sign_linehl):
+    def inner(gen_sign_name):  # {{{
+        def func(execution_count):  # {{{
+            global state
 
-    for signid in state.sign_ids_err[execution_count]:
-        vim.command('sign unplace %s group=magma buffer=%s'
-                    % (signid, state.main_buffer.number))
-        # vim.command('sign unplace %s group=magma buffer=%s'
-        #             % (signid, vim.current.buffer.number))
-    del state.sign_ids_err[execution_count]  # }}}
+            sign_name = gen_sign_name(execution_count)
+
+            new_state_sign_storage[execution_count] = []
+            for signid in state_sign_storage[execution_count]:
+                lineno = vim.eval('sign_getplaced(%s,'
+                                  '{"group": "magma", "id": %s})'
+                                  % (state.main_buffer.number, signid)
+                                  )[0]['signs'][0]['lnum']
+                vim.command('sign unplace %s group=magma buffer=%s'
+                            % (signid, state.main_buffer.number))
+                if not vim.eval('sign_getdefined("%s")'
+                                % sign_name):
+                    vim.command('sign define %s text=%s'
+                                ' texthl=%s'
+                                ' linehl=%s'
+                                % (sign_name,
+                                   sign_text,
+                                   sign_texthl,
+                                   sign_linehl))
+                signid = vim.eval('sign_place(0, "magma", "%s",'
+                                  ' %s, {"lnum": %s})'
+                                  % (sign_name,
+                                     state.main_buffer.number,
+                                     lineno))
+                new_state_sign_storage[execution_count].append(signid)
+            del state_sign_storage[execution_count]  # }}}
+
+        return func  # }}}
+
+    return inner  # }}}
 
 
-def setsign_running2err(execution_count):  # {{{
-    global state
+# setsign_*  {{{
 
-    state.sign_ids_err[execution_count] = []
-    for signid in state.sign_ids_running[execution_count]:
-        lineno = vim.eval('sign_getplaced(%s, {"group": "magma", "id": %s})'
-                          % (state.main_buffer.number, signid)
-                          )[0]['signs'][0]['lnum']
-        vim.command('sign unplace %s group=magma buffer=%s'
-                    % (signid, state.main_buffer.number))
-        vim.command('sign define magma_err_%d text=✗'
-                    ' texthl=MagmaErrSign'
-                    ' linehl=MagmaErrLine'
-                    % (execution_count))
-        signid = vim.eval('sign_place(0, "magma", "magma_err_%d",'
-                          '%s, {"lnum": %s})'
-                          % (execution_count,
-                             state.main_buffer.number,
-                             lineno))
-        state.sign_ids_err[execution_count].append(signid)
-    del state.sign_ids_running[execution_count]  # }}}
+
+@setsign(state.sign_ids_hold, "∗", 'MagmaHoldSign', 'MagmaHoldLine')
+def setsign_hold(_):
+    return 'magma_hold'
+
+
+@setsign(state.sign_ids_running, "@", 'MagmaRunningSign', 'MagmaRunningLine')
+def setsign_running(execution_count):
+    return 'magma_running_%d' % execution_count
+
+
+@setsign(state.sign_ids_ok, "✓", 'MagmaOkSign', 'MagmaOkLine')
+def setsign_ok(execution_count):
+    return 'magma_ok_%d' % execution_count
+
+
+@setsign(state.sign_ids_err, "✗", 'MagmaErrSign', 'MagmaErrLine')
+def setsign_err(execution_count):
+    return 'magma_err_%d' % execution_count
+# }}}
+
+
+# unsetsign_*  {{{
+
+@unsetsign(state.sign_ids_hold)
+def unsetsign_hold():
+    pass
+
+
+@unsetsign(state.sign_ids_running)
+def unsetsign_running():
+    pass
+
+
+@unsetsign(state.sign_ids_ok)
+def unsetsign_ok():
+    pass
+
+
+@unsetsign(state.sign_ids_err)
+def unsetsign_err():
+    pass
+# }}}
+
+
+# chsign_*2*  {{{
+
+
+@chsign(state.sign_ids_hold, state.sign_ids_running, "@", 'MagmaRunningSign',
+        'MagmaRunningLine')
+def chsign_hold2running(execution_count):
+    return 'magma_running_%d' % execution_count
+
+
+@chsign(state.sign_ids_running, state.sign_ids_ok, "✓", 'MagmaOkSign',
+        'MagmaOkLine')
+def chsign_running2ok(execution_count):
+    return 'magma_ok_%d' % execution_count
+
+
+@chsign(state.sign_ids_running, state.sign_ids_err, "✗", 'MagmaErrSign',
+        'MagmaErrLine')
+def chsign_running2err(execution_count):
+    return 'magma_err_%d' % execution_count
+# }}}
