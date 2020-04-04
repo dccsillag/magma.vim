@@ -121,7 +121,8 @@ def main():
                         help="Port to host the server")
     parser.add_argument('-q', '--quiet',
                         action='store_true',
-                        help="Don't open any external windows (e.g. feh) and don't have input() at the end")
+                        help="Don't open any external windows (e.g. feh) and"
+                        "don't have input() at the end")
     parser.add_argument('-Q', '--semiquiet',
                         action='store_true',
                         help="Don't open any external windows (e.g. feh)")
