@@ -664,7 +664,7 @@ def update_loop():  # {{{
             break
 
         update()
-        time.sleep(0.5)  # XXX }}}
+        time.sleep(0.05)  # }}}
 
 
 def vim_update():  # {{{
