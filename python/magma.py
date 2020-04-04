@@ -669,7 +669,8 @@ def update_preview_window():  # {{{
 
     if not state.initialized.get() or \
        state.preview_window_id == -1 or \
-       int(vim.eval('win_id2win(%s)' % state.preview_window_id)) == -1:
+       int(vim.eval('win_id2win(%s)' % state.preview_window_id)) == 0 or \
+       vim.current.buffer.number != state.main_buffer.number:
         return
 
     signs = getsigns_line()
