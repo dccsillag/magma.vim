@@ -17,6 +17,10 @@ quiet: bool = False
 semiquiet: bool = False
 
 
+def system_disown(command):
+    os.system("nohup %s > /dev/null 2>&1 &" % command)
+
+
 def display_output(mimetype, content):
     if mimetype == 'text/plain':
         print(content)
@@ -27,7 +31,7 @@ def display_output(mimetype, content):
             decoded = codecs.decode(content.encode(), 'base64')
             tmpfile.write(decoded)
         if not (quiet or semiquiet):
-            os.system('feh --image-bg white %s &' % tmppath)
+            system_disown('feh --image-bg white %s' % tmppath)
         os.system('tiv %s' % tmppath)
     elif mimetype == 'text/html':
         subprocess.run(['w3m', '-dump', '-T', 'text/html'],
