@@ -45,6 +45,9 @@ def display_output(mimetype, content):
 
 
 def display_choose(content):
+    if len(content) == 0:
+        return
+
     if 'image/png' in content:
         display_output('image/png', content['image/png'])
     elif 'text/plain' in content:
