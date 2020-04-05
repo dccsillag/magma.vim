@@ -1,9 +1,9 @@
 # vim: fdm=marker
-import socketserver
 import http.server
 import json
 import os
 import queue
+import socketserver
 import sys
 import threading
 import time
@@ -724,8 +724,6 @@ def update_preview_window():  # {{{
                         % (state.preview_window_id,
                            state.preview_empty_buffer.number))
         return
-
-    assert len(signs) == 1
 
     sign_name = signs[0]['name']
 
