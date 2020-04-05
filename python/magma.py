@@ -94,11 +94,12 @@ class State(object):  # {{{
             self.main_buffer = vim.current.buffer
             self.main_window_id = vim.eval('win_getid()')
 
-            vim.command('new')
-            vim.command('setl nobuflisted')
-            self.preview_empty_buffer = vim.current.buffer
-            self.preview_window_id = vim.eval('win_getid()')
-            vim.command('call win_gotoid(%s)' % self.main_window_id)
+            if preview_window_enabled():
+                vim.command('new')
+                vim.command('setl nobuflisted')
+                self.preview_empty_buffer = vim.current.buffer
+                self.preview_window_id = vim.eval('win_getid()')
+                vim.command('call win_gotoid(%s)' % self.main_window_id)
 
             vim.command('call timer_pause(g:magma_timer, 0)')
 
@@ -145,11 +146,12 @@ class State(object):  # {{{
             self.main_buffer = vim.current.buffer
             self.main_window_id = vim.eval('win_getid()')
 
-            vim.command('new')
-            vim.command('setl nobuflisted')
-            self.preview_empty_buffer = vim.current.buffer
-            self.preview_window_id = vim.eval('win_getid()')
-            vim.command('call win_gotoid(%s)' % self.main_window_id)
+            if preview_window_enabled():
+                vim.command('new')
+                vim.command('setl nobuflisted')
+                self.preview_empty_buffer = vim.current.buffer
+                self.preview_window_id = vim.eval('win_getid()')
+                vim.command('call win_gotoid(%s)' % self.main_window_id)
 
             vim.command('call timer_pause(g:magma_timer, 0)')
 
@@ -191,19 +193,25 @@ class State(object):  # {{{
         """
 
         if self.initialized.get():
-            self.client.shutdown()
-            self.kernel_state.set(KS_NOT_CONNECTED)
-            self.main_buffer = None
-            self.initialized.set(False)
             # FIXME: possible concurrency issue due to `self.server_port`:
             requests.post('http://127.0.0.1:%d'
                           % self.server_port,
                           json={'action': 'shutdown'})
 
-            vim.command('call timer_pause(g:magma_timer, 1)')
+            self.initialized.set(False)
 
             self.background_loop.join()
-            self.background_server.join()  # }}}}}}
+            self.background_server.join()
+
+            self.client.shutdown()
+            self.kernel_state.set(KS_NOT_CONNECTED)
+            self.main_buffer = None
+
+            if preview_window_enabled():
+                vim.command('call win_execute(%s, "q")' % self.main_window_id)
+            self.main_window_id = -1
+
+            vim.command('call timer_pause(g:magma_timer, 1)')  # }}}}}}
 
 
 class MyHandler(http.server.BaseHTTPRequestHandler):  # {{{
@@ -474,7 +482,7 @@ def show_evaluated_output(withBang):  # {{{
             execution_count = int(signname[9:])
 
             state.port.set(-1)
-            if int(vim.eval('g:magma_preview_window_enabled')):
+            if preview_window_enabled():
                 start_outputs(False, True, withBang)
             else:
                 start_outputs(False, True, True)
@@ -527,9 +535,9 @@ def update():  # {{{
                 with RunInLineNo(state.code_lineno.get()):
                     setsign_running(state.current_execution_count.get())
                 state.has_error.set(False)
-                has_preview = bool(int(vim.eval(
-                    'g:magma_preview_window_enabled')))
-                start_outputs(has_preview, not has_preview, not has_preview)
+                start_outputs(preview_window_enabled(),
+                              not preview_window_enabled(),
+                              not preview_window_enabled())
             state.events.put(initiate_execution)
             return  # }}}
         elif message_type == 'status':  # {{{
@@ -733,6 +741,13 @@ def get_kernel_state(vim_var):  # {{{
     global state
 
     vim.command('let %s = %s' % (vim_var, state.kernel_state.get()))  # }}}
+
+
+# Query for Magma options
+
+
+def preview_window_enabled():# {{{
+    return bool(int(vim.eval('g:magma_preview_window_enabled')))# }}}
 
 
 # Iterate over the current paragraph
