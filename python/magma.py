@@ -22,6 +22,7 @@ KS_NOT_CONNECTED = 3
 
 HS_RUNNING = 0
 HS_DONE = 1
+HS_ERROR = 2
 
 
 class Locked(object):  # {{{
@@ -97,6 +98,13 @@ class State(object):  # {{{
             if preview_window_enabled():
                 vim.command('new')
                 vim.command('setl nobuflisted')
+                vim.command('f (magma.vim) Output Preview')
+                vim.command('setl buftype=nofile')
+                vim.command('setl nomodifiable')
+                vim.command('setl nonumber')
+                vim.command('setl norelativenumber')
+                vim.command('setl foldcolumn=0')
+                vim.command('setl signcolumn=no')
                 self.preview_empty_buffer = vim.current.buffer
                 self.preview_window_id = vim.eval('win_getid()')
                 vim.command('call win_gotoid(%s)' % self.main_window_id)
@@ -149,6 +157,9 @@ class State(object):  # {{{
             if preview_window_enabled():
                 vim.command('new')
                 vim.command('setl nobuflisted')
+                vim.command('f (magma.vim) Output Preview')
+                vim.command('setl buftype=nofile')
+                vim.command('setl nomodifiable')
                 self.preview_empty_buffer = vim.current.buffer
                 self.preview_window_id = vim.eval('win_getid()')
                 vim.command('call win_gotoid(%s)' % self.main_window_id)
@@ -208,8 +219,10 @@ class State(object):  # {{{
             self.main_buffer = None
 
             if preview_window_enabled():
-                vim.command('call win_execute(%s, "q")' % self.main_window_id)
+                vim.command('call win_execute(%s, "bd")'
+                            % self.preview_window_id)
             self.main_window_id = -1
+            self.preview_window_id = -1
 
             vim.command('call timer_pause(g:magma_timer, 1)')  # }}}}}}
 
@@ -423,19 +436,23 @@ def start_outputs(hide, request_newline, allow_external):  # {{{
 
     # Create the output buffer (and the job)
     bufno = vim.eval('term_start(%r, {'
-                     ' "term_name": "(magma) Out[%d]",'
+                     ' "term_name": "(magma.vim) Out[%d]",'
                      ' "hidden": %d,'
-                     ' "exit_cb": "MagmaOutbufSetNofile%d",'
+                     ' "exit_cb": "MagmaOutbufSetOptions%d",'
                      '})'
                      % (job,
                         state.current_execution_count.get(),
                         int(hide),
                         state.current_execution_count.get()))
-    vim.command('function! MagmaOutbufSetNofile%d(...)\n'
+    vim.command('function! MagmaOutbufSetOptions%d(...)\n'
                 '  call setbufvar(%s, "&buftype", "nofile")\n'
+                '  call setbufvar(%s, "&number", 0)\n'
+                '  call setbufvar(%s, "&relativenumber", 0)\n'
+                '  call setbufvar(%s, "&foldcolumn", 0)\n'
+                '  call setbufvar(%s, "&signcolumn", "no")\n'
                 'endfunction'
-                % (state.current_execution_count.get(),
-                   bufno))
+                % ((state.current_execution_count.get(),) +
+                   5*(bufno,)))
     vim.command('call setbufvar(%s, "&buflisted", 0)' % bufno)
     # vim.command('new')
     # bufno = vim.eval('bufnr()')
@@ -550,6 +567,9 @@ def update():  # {{{
                               json={'type': 'done'})
 
                 if state.has_error.get():
+                    with state.history as hist:
+                        hist[state.current_execution_count.get()]['status'] = \
+                            HS_ERROR
                     state.kernel_state.set(KS_IDLE)
                     state.events.put(lambda: chsign_running2err(
                                          state.current_execution_count.get()))
@@ -561,6 +581,9 @@ def update():  # {{{
                             continue
                         state.execution_queue.task_done()
                 else:
+                    with state.history as hist:
+                        hist[state.current_execution_count.get()]['status'] = \
+                            HS_DONE
                     state.events.put(lambda: chsign_running2ok(
                                          state.current_execution_count.get()))
                     if state.execution_queue.qsize() > 0:
@@ -746,8 +769,8 @@ def get_kernel_state(vim_var):  # {{{
 # Query for Magma options
 
 
-def preview_window_enabled():# {{{
-    return bool(int(vim.eval('g:magma_preview_window_enabled')))# }}}
+def preview_window_enabled():  # {{{
+    return bool(int(vim.eval('g:magma_preview_window_enabled')))  # }}}
 
 
 # Iterate over the current paragraph
