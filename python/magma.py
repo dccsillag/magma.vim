@@ -7,6 +7,7 @@ import socketserver
 import sys
 import threading
 import time
+from functools import partial
 from typing import Dict, List
 
 import jupyter_client
@@ -23,6 +24,8 @@ KS_NOT_CONNECTED = 3
 HS_RUNNING = 0
 HS_DONE = 1
 HS_ERROR = 2
+
+EXECUTION_BIGTIME = 10
 
 
 class Locked(object):  # {{{
@@ -63,6 +66,7 @@ class State(object):  # {{{
 
     iopub_queue: queue.Queue = queue.Queue()
     has_error = Locked(False)
+    execution_timestamp = None
 
     execution_queue: queue.Queue = queue.Queue()
     code_lineno = Locked("")  # Vim stores its ints as str in Python
@@ -351,6 +355,7 @@ def evaluate(code, code_lineno):  # {{{
         state.port.set(-1)
         state.code_lineno.set(code_lineno)
 
+        state.execution_timestamp = time.time()
         state.client.execute(code)
     elif state.kernel_state.get() in (KS_BUSY, KS_NONIDLE):
         with RunInLineNo(code_lineno):
@@ -521,6 +526,19 @@ def show_evaluated_output(withBang):  # {{{
             threading.Thread(target=forward_output).start()  # }}}
 
 
+def notify_done(has_error):  # {{{
+    if has_error:
+        vim.command('call popup_notification("'
+                    'Execution aborted due to error'
+                    '", {"title": "Magma"})')
+    else:
+        vim.command('call popup_notification("'
+                    'Done executing'
+                    '", {"title": "Magma"})')
+    vim.command('call sound_playevent("%s")'
+                % vim.eval('g:magma_alert_sound'))  # }}}
+
+
 def update():  # {{{
     global state
 
@@ -571,6 +589,8 @@ def update():  # {{{
                         hist[state.current_execution_count.get()]['status'] = \
                             HS_ERROR
                     state.kernel_state.set(KS_IDLE)
+                    if time.time() - state.execution_timestamp > EXECUTION_BIGTIME:
+                        state.events.put(partial(notify_done, True))
                     state.events.put(lambda: chsign_running2err(
                                          state.current_execution_count.get()))
                     # Clear the execution queue:
@@ -596,6 +616,8 @@ def update():  # {{{
                             evaluate(*state.execution_queue.get())
                         state.events.put(next_from_queue)
                     else:
+                        if time.time() - state.execution_timestamp > EXECUTION_BIGTIME:
+                            state.events.put(partial(notify_done, False))
                         state.kernel_state.set(KS_IDLE)  # }}}
             elif content['execution_state'] == 'busy':  # {{{
                 state.kernel_state.set(KS_BUSY)  # }}}
