@@ -589,7 +589,8 @@ def update():  # {{{
                         hist[state.current_execution_count.get()]['status'] = \
                             HS_ERROR
                     state.kernel_state.set(KS_IDLE)
-                    if time.time() - state.execution_timestamp > EXECUTION_BIGTIME:
+                    if time.time() - state.execution_timestamp > \
+                            EXECUTION_BIGTIME:
                         state.events.put(partial(notify_done, True))
                     state.events.put(lambda: chsign_running2err(
                                          state.current_execution_count.get()))
@@ -616,7 +617,8 @@ def update():  # {{{
                             evaluate(*state.execution_queue.get())
                         state.events.put(next_from_queue)
                     else:
-                        if time.time() - state.execution_timestamp > EXECUTION_BIGTIME:
+                        if time.time() - state.execution_timestamp > \
+                                EXECUTION_BIGTIME:
                             state.events.put(partial(notify_done, False))
                         state.kernel_state.set(KS_IDLE)  # }}}
             elif content['execution_state'] == 'busy':  # {{{
