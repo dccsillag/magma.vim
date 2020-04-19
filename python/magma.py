@@ -78,6 +78,7 @@ class State(object):  # {{{
     output_buffer_numbers: Dict[int, int] = {}
 
     sign_ids_hold: Dict[int, List[int]] = {}
+    sign_ids_wait: Dict[int, List[int]] = {}
     sign_ids_running: Dict[int, List[int]] = {}
     sign_ids_ok: Dict[int, List[int]] = {}
     sign_ids_err: Dict[int, List[int]] = {}
@@ -332,11 +333,11 @@ def evaluate(code, code_lineno):  # {{{
 
     # Check if we can actually evaluate this code (e.g. isn't already in queue)
     signs = getsigns_inbuffer()
-    if any(sign['id'] in state.sign_ids_hold for sign in signs):
+    if any(int(sign['id']) in state.sign_ids_hold for sign in signs):
         print("Trying to re-evaluate a line that is on hold",
               file=sys.stderr)
         return False
-    if any(sign['id'] in state.sign_ids_running for sign in signs):
+    if any(int(sign['id']) in state.sign_ids_running for sign in signs):
         print("Trying to re-evaluate a line that is already running",
               file=sys.stderr)
         return False
@@ -348,6 +349,7 @@ def evaluate(code, code_lineno):  # {{{
             for sign in signs_in_this_line:
                 vim.command('sign unplace %s group=magma buffer=%s'
                             % (sign['id'], state.main_buffer.number))
+    setsign_wait(state.current_execution_count.get()+1)
 
     if state.kernel_state.get() == KS_IDLE:
         state.kernel_state.set(KS_NONIDLE)
@@ -567,8 +569,9 @@ def update():  # {{{
                 }
 
             def initiate_execution():
-                with RunInLineNo(state.code_lineno.get()):
-                    setsign_running(state.current_execution_count.get())
+                # with RunInLineNo(state.code_lineno.get()):
+                chsign_wait2running(state.current_execution_count.get())
+
                 state.has_error.set(False)
                 start_outputs(preview_window_enabled(),
                               not preview_window_enabled(),
@@ -937,6 +940,11 @@ def setsign_hold(_):
     return 'magma_hold'
 
 
+@setsign(state.sign_ids_wait, "-", 'MagmaWaitSign', 'MagmaWaitLine')
+def setsign_wait(_):
+    return 'magma_waiting'
+
+
 @setsign(state.sign_ids_running, "@", 'MagmaRunningSign', 'MagmaRunningLine')
 def setsign_running(execution_count):
     return 'magma_running_%d' % execution_count
@@ -957,6 +965,11 @@ def setsign_err(execution_count):
 
 @unsetsign(state.sign_ids_hold)
 def unsetsign_hold():
+    pass
+
+
+@unsetsign(state.sign_ids_wait)
+def unsetsign_wait():
     pass
 
 
@@ -982,6 +995,12 @@ def unsetsign_err():
 @chsign(state.sign_ids_hold, state.sign_ids_running, "@", 'MagmaRunningSign',
         'MagmaRunningLine')
 def chsign_hold2running(execution_count):
+    return 'magma_running_%d' % execution_count
+
+
+@chsign(state.sign_ids_wait, state.sign_ids_running, "@", 'MagmaRunningSign',
+        'MagmaRunningLine')
+def chsign_wait2running(execution_count):
     return 'magma_running_%d' % execution_count
 
 
