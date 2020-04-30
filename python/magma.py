@@ -1,4 +1,3 @@
-# vim: fdm=marker
 from uuid import uuid4
 import http.server
 import json
