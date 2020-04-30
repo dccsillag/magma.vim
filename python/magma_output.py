@@ -22,21 +22,19 @@ def system_disown(command):
 
 
 def display_output(mimetype, content):
-    if mimetype == 'text/plain':
+    if mimetype == "text/plain":
         print(content)
-    elif mimetype.startswith('image/'):
+    elif mimetype.startswith("image/"):
         extension = mimetypes.guess_extension(mimetype)
         tmppath = tempfile.mktemp(suffix=extension)
-        with open(tmppath, 'wb') as tmpfile:
-            decoded = codecs.decode(content.encode(), 'base64')
+        with open(tmppath, "wb") as tmpfile:
+            decoded = codecs.decode(content.encode(), "base64")
             tmpfile.write(decoded)
         if not (quiet or semiquiet):
-            system_disown('feh --image-bg white %s' % tmppath)
-        os.system('tiv %s' % tmppath)
-    elif mimetype == 'text/html':
-        subprocess.run(['w3m', '-dump', '-T', 'text/html'],
-                       input=content,
-                       text=True)
+            system_disown("feh --image-bg white %s" % tmppath)
+        os.system("tiv %s" % tmppath)
+    elif mimetype == "text/html":
+        subprocess.run(["w3m", "-dump", "-T", "text/html"], input=content, text=True)
     else:
         print("--------", file=sys.stderr)
         print("Example input:", file=sys.stderr)
@@ -48,12 +46,12 @@ def display_choose(content):
     if len(content) == 0:
         return
 
-    if 'image/png' in content:
-        display_output('image/png', content['image/png'])
-    elif 'text/plain' in content:
-        display_output('text/plain', content['text/plain'])
-    elif 'text/html' in content:
-        display_output('text/html', content['text/html'])
+    if "image/png" in content:
+        display_output("image/png", content["image/png"])
+    elif "text/plain" in content:
+        display_output("text/plain", content["text/plain"])
+    elif "text/html" in content:
+        display_output("text/html", content["text/html"])
     else:
         print("--------", file=sys.stderr)
         print("Example input:", file=sys.stderr)
@@ -64,7 +62,7 @@ def display_choose(content):
 class MyHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header('Content-type', 'text/html')
+        self.send_header("Content-type", "text/html")
         self.end_headers()
 
         self.wfile.write(b"Hello World!")
@@ -72,31 +70,31 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         global has_output
 
-        content_length = int(self.headers['Content-length'])
+        content_length = int(self.headers["Content-length"])
         body = json.loads(self.rfile.read(content_length))
         self.send_response(202)
         self.end_headers()
 
-        kind = body['type']
-        if kind == 'output':
+        kind = body["type"]
+        if kind == "output":
             has_output = True
-            print(body['text'])
-        elif kind == 'display':
+            print(body["text"])
+        elif kind == "display":
             has_output = True
-            display_choose(body['content'])
-        elif kind == 'error':
+            display_choose(body["content"])
+        elif kind == "error":
             has_output = True
             # print("%s: %s"
             #       % (body['error_type'], body['error_message']),
             #       file=sys.stderr)
-            print('\n'.join(body['traceback']), file=sys.stderr)
-        elif kind == 'stdout':
+            print("\n".join(body["traceback"]), file=sys.stderr)
+        elif kind == "stdout":
             has_output = True
-            sys.stdout.write(body['content'])
-        elif kind == 'stderr':
+            sys.stdout.write(body["content"])
+        elif kind == "stderr":
             has_output = True
-            sys.stderr.write(body['content'])
-        elif kind == 'done':
+            sys.stderr.write(body["content"])
+        elif kind == "done":
             raise KeyboardInterrupt
         else:
             raise Exception("Unknown POST request type: %s" % kind)
@@ -109,41 +107,44 @@ def main():
     global quiet, semiquiet
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('parent',
-                        type=int,
-                        help="Port of the parent server")
-    parser.add_argument('host',
-                        type=str,
-                        default='127.0.0.1',
-                        nargs='?',
-                        help="Where to host the server")
-    parser.add_argument('port',
-                        type=int,
-                        default=0,
-                        nargs='?',
-                        help="Port to host the server")
-    parser.add_argument('-q', '--quiet',
-                        action='store_true',
-                        help="Don't open any external windows (e.g. feh) and"
-                        "don't have input() at the end")
-    parser.add_argument('-Q', '--semiquiet',
-                        action='store_true',
-                        help="Don't open any external windows (e.g. feh)")
+    parser.add_argument("parent", type=int, help="Port of the parent server")
+    parser.add_argument(
+        "host",
+        type=str,
+        default="127.0.0.1",
+        nargs="?",
+        help="Where to host the server",
+    )
+    parser.add_argument(
+        "port", type=int, default=0, nargs="?", help="Port to host the server"
+    )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Don't open any external windows (e.g. feh) and"
+        "don't have input() at the end",
+    )
+    parser.add_argument(
+        "-Q",
+        "--semiquiet",
+        action="store_true",
+        help="Don't open any external windows (e.g. feh)",
+    )
     args = parser.parse_args()
 
     quiet = args.quiet
     semiquiet = args.semiquiet
 
     try:
-        with socketserver.TCPServer(('', args.port), MyHandler) as httpd:
+        with socketserver.TCPServer(("", args.port), MyHandler) as httpd:
             _, port = httpd.server_address
-            requests.post("http://127.0.0.1:%d" % args.parent,
-                          json={'port': port})
+            requests.post("http://127.0.0.1:%d" % args.parent, json={"port": port})
             # print("Serving at IP %s; port %d" % httpd.server_address)
             httpd.serve_forever()
     except KeyboardInterrupt:
         return
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
