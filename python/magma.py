@@ -8,10 +8,6 @@ import sys
 import threading
 import time
 from functools import partial
-from typing import Dict, List
-
-import jupyter_client
-import requests
 
 import vim
 
@@ -51,37 +47,37 @@ class Locked(object):  # {{{
 
 class State(object):  # {{{
     initialized = Locked(False)
-    client: jupyter_client.BlockingKernelClient = None
+    client = None
     history = Locked({})
     current_execution_count = Locked(0)
     background_loop = None
     background_server = None
     kernel_state = Locked(KS_NOT_CONNECTED)
 
-    # general_lock: threading.Lock = threading.Lock()
+    # general_lock = threading.Lock()
 
-    events: queue.Queue = queue.Queue()
-    server_port: int = -1
+    events = queue.Queue()
+    server_port = -1
     port = Locked(-1)
 
-    iopub_queue: queue.Queue = queue.Queue()
+    iopub_queue = queue.Queue()
     has_error = Locked(False)
     execution_timestamp = None
 
-    execution_queue: queue.Queue = queue.Queue()
+    execution_queue = queue.Queue()
     code_lineno = Locked("")  # Vim stores its ints as str in Python
 
-    main_buffer: vim.Buffer = None
-    main_window_id: int = -1
-    preview_empty_buffer: vim.Buffer = None
-    preview_window_id: int = -1
-    output_buffer_numbers: Dict[int, int] = {}
+    main_buffer = None
+    main_window_id = -1
+    preview_empty_buffer = None
+    preview_window_id = -1
+    output_buffer_numbers = {}
 
-    sign_ids_hold: Dict[int, List[int]] = {}
-    sign_ids_wait: Dict[int, List[int]] = {}
-    sign_ids_running: Dict[int, List[int]] = {}
-    sign_ids_ok: Dict[int, List[int]] = {}
-    sign_ids_err: Dict[int, List[int]] = {}
+    sign_ids_hold = {}
+    sign_ids_wait = {}
+    sign_ids_running = {}
+    sign_ids_ok = {}
+    sign_ids_err = {}
 
     def __del__(self):  # {{{
         self.deinitialize()  # }}}
@@ -90,6 +86,8 @@ class State(object):  # {{{
         """
         Initialize the client and a local kernel, if it isn't yet initialized.
         """
+
+        import jupyter_client
 
         if not self.initialized.get():
             # self.client = jupyter_client.run_kernel(kernel_name=kernel_name)
@@ -126,6 +124,8 @@ class State(object):  # {{{
         Initialize the client and connect to a kernel (possibly remote),
           if it isn't yet initialized.
         """
+
+        import jupyter_client
 
         if not self.initialized.get():
             self.client = jupyter_client.BlockingKernelClient()
@@ -207,6 +207,7 @@ class State(object):  # {{{
         """
         Deinitialize the client, if it is initialized.
         """
+        import requests
 
         if self.initialized.get():
             # FIXME: possible concurrency issue due to `self.server_port`:
@@ -267,11 +268,15 @@ state = State()
 
 
 def setup_ssh_tunneling(host, connection_file):  # {{{
+    import jupyter_client
+
     jupyter_client.tunnel_to_kernel(connection_file, host)  # }}}
 
 
 def init_local():  # {{{
     global state
+
+    import jupyter_client
 
     if not state.initialized.get():
         # Select from available kernels
@@ -480,6 +485,8 @@ def start_outputs(hide, request_newline, allow_external):  # {{{
 def show_evaluated_output(withBang):  # {{{
     global state
 
+    import requests
+
     if not state.initialized.get():
         return
 
@@ -543,6 +550,8 @@ def notify_done(has_error):  # {{{
 
 def update():  # {{{
     global state
+
+    import requests
 
     if not state.initialized.get():
         return
