@@ -1,4 +1,3 @@
-from uuid import uuid4
 import http.server
 import json
 import os
@@ -8,9 +7,9 @@ import sys
 import threading
 import time
 from functools import partial
+from uuid import uuid4
 
 import vim
-
 
 KS_IDLE = 0
 KS_NONIDLE = 1
@@ -73,6 +72,7 @@ class Magma(object):
     main_window_id = -1
     preview_empty_buffer = None
     preview_window_id = -1
+    output_buffers = []
 
     sign_ids_hold = {}
     sign_ids_wait = {}
@@ -437,6 +437,7 @@ class Magma(object):
         # vim.command('set buftype=nofile')
         # vim.command('set nobuflisted')
         vim.command('call win_gotoid(%s)' % self.main_window_id)
+        self.output_buffers.append(bufno)
         with self.history as history:
             history[self.current_execution_count.get()]['buffer_number'] = bufno
 
@@ -913,12 +914,10 @@ magma_instances = []
 
 
 def get_magma_instance():
-    if len(magma_instances) > 0:
-        return magma_instances[0]
-    # current_buffer = vim.current.buffer.number
-    # for instance in magma_instances:
-    #     if current_buffer == instance.main_buffer:
-    #         return instance
+    current_buffer = vim.current.buffer.number
+    for instance in magma_instances:
+        if current_buffer == instance.main_buffer.number or current_buffer in instance.output_buffers:
+            return instance
 
 
 def make_handler_for_instance(magma_instance):
