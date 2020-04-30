@@ -114,6 +114,7 @@ class Magma(object):
                 vim.command('setl nobuflisted')
                 vim.command('f (magma.vim) Output Preview')
                 vim.command('setl buftype=nofile')
+                vim.command('setl noswapfile')
                 vim.command('setl nomodifiable')
                 vim.command('setl nonumber')
                 vim.command('setl norelativenumber')
@@ -175,6 +176,7 @@ class Magma(object):
                 vim.command('setl nobuflisted')
                 vim.command('f (magma.vim) Output Preview')
                 vim.command('setl buftype=nofile')
+                vim.command('setl noswapfile')
                 vim.command('setl nomodifiable')
                 self.preview_empty_buffer = vim.current.buffer
                 self.preview_window_id = vim.eval('win_getid()')
@@ -416,6 +418,7 @@ class Magma(object):
                             self.current_execution_count.get()))
         vim.command('function! MagmaOutbufSetOptions%d(...)\n'
                     '  call setbufvar(%s, "&buftype", "nofile")\n'
+                    '  call setbufvar(%s, "&swapfile", 0)\n'
                     '  call setbufvar(%s, "&number", 0)\n'
                     '  call setbufvar(%s, "&relativenumber", 0)\n'
                     '  call setbufvar(%s, "&foldcolumn", 0)\n'
