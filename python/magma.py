@@ -425,7 +425,7 @@ class Magma(object):
                     '  call setbufvar(%s, "&signcolumn", "no")\n'
                     'endfunction'
                     % ((self.current_execution_count.get(),) +
-                       5*(bufno,)))
+                       6*(bufno,)))
         vim.command('call setbufvar(%s, "&buflisted", 0)' % bufno)
         # vim.command('new')
         # bufno = vim.eval('bufnr()')
@@ -914,10 +914,12 @@ magma_instances = []
 
 
 def get_magma_instance():
-    current_buffer = vim.current.buffer.number
-    for instance in magma_instances:
-        if current_buffer == instance.main_buffer:
-            return instance
+    if len(magma_instances) > 0:
+        return magma_instances[0]
+    # current_buffer = vim.current.buffer.number
+    # for instance in magma_instances:
+    #     if current_buffer == instance.main_buffer:
+    #         return instance
 
 
 def make_handler_for_instance(magma_instance):
@@ -933,8 +935,10 @@ def make_handler_for_instance(magma_instance):
 
             magma_instance.port.set(body['port'])
 
-    def log_message(self, format, *args):
-        pass  # do nothing
+        def log_message(self, format, *args):
+            pass  # do nothing
+
+    return MyHandler
 
 
 class RunInLineNo(object):
