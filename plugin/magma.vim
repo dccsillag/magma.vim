@@ -79,6 +79,14 @@ if magma_instance is not None:
 EOF
 endfunction
 
+function s:MagmaDeinitAll()
+python3 << EOF
+for magma_instance in magma.magma_instances:
+    magma_instance.deinit()
+    del magma.magma_instances[magma.magma_instances.index(magma_instance)]
+EOF
+endfunction
+
 function s:MagmaEvaluate(code)
 python3 << EOF
 magma_instance = magma.get_magma_instance()
@@ -158,5 +166,5 @@ call timer_pause(g:magma_timer, 1)
 augroup magma
     autocmd!
     " TODO: add more commands for automatically running :MagmaDeinit ↓↓↓↓↓
-    autocmd VimLeave * MagmaDeinit
+    autocmd VimLeave * call s:MagmaDeinitAll()
 augroup END
