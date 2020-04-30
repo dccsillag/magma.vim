@@ -25,28 +25,28 @@ HS_ERROR = 2
 EXECUTION_BIGTIME = 10
 
 
-class Locked(object):  # {{{
-    def __init__(self, var):  # {{{
+class Locked(object):
+    def __init__(self, var):
         self.var = var
-        self.lock = threading.Lock()  # }}}
+        self.lock = threading.Lock()
 
-    def get(self):  # {{{
+    def get(self):
         with self.lock:
-            return self.var  # }}}
+            return self.var
 
-    def set(self, newvar):  # {{{
+    def set(self, newvar):
         with self.lock:
-            self.var = newvar  # }}}
+            self.var = newvar
 
-    def __enter__(self, *args):  # {{{
+    def __enter__(self, *args):
         self.lock.__enter__(*args)
-        return self.var  # }}}
+        return self.var
 
-    def __exit__(self, *args):  # {{{
-        return self.lock.__exit__(*args)  # }}}}}}
+    def __exit__(self, *args):
+        return self.lock.__exit__(*args)
 
 
-class Magma(object):  # {{{
+class Magma(object):
     uuid = None
 
     initialized = Locked(False)
@@ -81,19 +81,19 @@ class Magma(object):  # {{{
     sign_ids_ok = {}
     sign_ids_err = {}
 
-    def __init__(self):  # {{{
-        self.uuid = uuid4()  # }}}
+    def __init__(self):
+        self.uuid = uuid4()
 
-    def __eq__(self, other):  # {{{
+    def __eq__(self, other):
         if not isinstance(other, Magma):
             return False
         else:
-            return self.uuid == other.uuid  # }}}
+            return self.uuid == other.uuid
 
-    def __del__(self):  # {{{
-        self.deinitialize()  # }}}
+    def __del__(self):
+        self.deinitialize()
 
-    def initialize_new(self, kernel_name):  # {{{
+    def initialize_new(self, kernel_name):
         """
         Initialize the client and a local kernel, if it isn't yet initialized.
         """
@@ -128,9 +128,9 @@ class Magma(object):  # {{{
             self.initialized.set(True)
 
             self.start_background_loop()
-            self.start_background_server()  # }}}
+            self.start_background_server()
 
-    def initialize_remote(self, connection_file, ssh=None):  # {{{
+    def initialize_remote(self, connection_file, ssh=None):
         """
         Initialize the client and connect to a kernel (possibly remote),
           if it isn't yet initialized.
@@ -185,13 +185,13 @@ class Magma(object):  # {{{
             self.initialized.set(True)
 
             self.start_background_loop()
-            self.start_background_server()  # }}}
+            self.start_background_server()
 
-    def start_background_loop(self):  # {{{
+    def start_background_loop(self):
         self.background_loop = threading.Thread(target=self.update_loop)
-        self.background_loop.start()  # }}}
+        self.background_loop.start()
 
-    def start_background_server(self):  # {{{
+    def start_background_server(self):
         def run_server():
             try:
                 with socketserver.TCPServer(('', 0), make_handler_for_instance(self)) as httpd:
@@ -200,9 +200,9 @@ class Magma(object):  # {{{
             except KeyboardInterrupt:
                 return
         self.background_server = threading.Thread(target=run_server)
-        self.background_server.start()  # }}}
+        self.background_server.start()
 
-    def restart(self):  # {{{
+    def restart(self):
         """
         Restart the kernel.
         """
@@ -212,9 +212,9 @@ class Magma(object):  # {{{
             self.kernel_state.set(KS_NOT_CONNECTED)
             self.client.shutdown(True)
             self.kernel_state.set(KS_IDLE)
-            self.client.initialized = True  # }}}
+            self.client.initialized = True
 
-    def deinitialize(self):  # {{{
+    def deinitialize(self):
         """
         Deinitialize the client, if it is initialized.
         """
@@ -241,16 +241,16 @@ class Magma(object):  # {{{
             self.main_window_id = -1
             self.preview_window_id = -1
 
-            vim.command('call timer_pause(g:magma_timer, 1)')  # }}}
+            vim.command('call timer_pause(g:magma_timer, 1)')
 
     # ---
 
-    def setup_ssh_tunneling(self, host, connection_file):  # {{{
+    def setup_ssh_tunneling(self, host, connection_file):
         import jupyter_client
 
-        jupyter_client.tunnel_to_kernel(connection_file, host)  # }}}
+        jupyter_client.tunnel_to_kernel(connection_file, host)
 
-    def init_local(self):  # {{{
+    def init_local(self):
         import jupyter_client
 
         if not self.initialized.get():
@@ -274,9 +274,9 @@ class Magma(object):  # {{{
             print('Successfully initialized kernel %s!'
                   % specs[choice-1].display_name)
 
-            return True  # }}}
+            return True
 
-    def init_existing(self, connection_file):  # {{{
+    def init_existing(self, connection_file):
         if not self.initialized.get():
             try:
                 self.initialize_remote(connection_file)
@@ -286,20 +286,20 @@ class Magma(object):  # {{{
 
             print("Successfully connected to the kernel!")
 
-            return True  # }}}
+            return True
 
-    def init_remote(self, host, connection_file):  # {{{
+    def init_remote(self, host, connection_file):
         if not self.initialized.get():
             self.initialize_remote(connection_file, ssh=host)
 
             print('Successfully connected to the remote kernel!')
 
-            return True  # }}}
+            return True
 
-    def deinit(self):  # {{{
-        self.deinitialize()  # }}}
+    def deinit(self):
+        self.deinitialize()
 
-    def evaluate(self, code, code_lineno):  # {{{
+    def evaluate(self, code, code_lineno):
         if not self.initialized.get():
             return
 
@@ -340,9 +340,9 @@ class Magma(object):  # {{{
         else:
             print("Invalid kernel state: %d" % self.kernel_state.get(),
                   file=sys.stderr)
-            return  # }}}
+            return
 
-    def read_session(self, session: dict):  # {{{
+    def read_session(self, session: dict):
         for sign in session['signs']:
             defined_signs = vim.eval('sign_getdefined(%r)' % sign['name'])
             if len(defined_signs) == 0:
@@ -373,26 +373,26 @@ class Magma(object):  # {{{
                         self.main_buffer.number,
                         sign['lnum']))
 
-        self.history.set(session['history'])  # }}}
+        self.history.set(session['history'])
 
-    def write_session(self) -> dict:  # {{{
+    def write_session(self) -> dict:
         return {
             'signs': vim.eval('sign_getplaced(%s, {"group": "magma"})'
                               % self.main_buffer.number)[0]['signs'],
             'history': self.history.get(),
-        }  # }}}
+        }
 
-    def read_session_file(self, path: str):  # {{{
+    def read_session_file(self, path: str):
         with open(path) as f:
             session = json.load(f)
             session['history'] = {int(k): v for k, v in session['history'].items()}
-            self.read_session(session)  # }}}
+            self.read_session(session)
 
-    def write_session_file(self, path: str):  # {{{
+    def write_session_file(self, path: str):
         with open(path, 'w') as f:
-            json.dump(self.write_session(), f)  # }}}
+            json.dump(self.write_session(), f)
 
-    def start_outputs(self, hide, request_newline, allow_external):  # {{{
+    def start_outputs(self, hide, request_newline, allow_external):
         job = ['python3',
                os.path.join(os.path.dirname(os.path.realpath(__file__)),
                             'magma_output.py'),
@@ -437,9 +437,8 @@ class Magma(object):  # {{{
         vim.command('call win_gotoid(%s)' % self.main_window_id)
         with self.history as history:
             history[self.current_execution_count.get()]['buffer_number'] = bufno
-        # }}}
 
-    def show_evaluated_output(self, withBang):  # {{{
+    def show_evaluated_output(self, withBang):
         import requests
 
         if not self.initialized.get():
@@ -487,9 +486,9 @@ class Magma(object):  # {{{
                                   % self.port.get(),
                                   json={'type': 'done'})
 
-                threading.Thread(target=forward_output).start()  # }}}
+                threading.Thread(target=forward_output).start()
 
-    def update(self):  # {{{
+    def update(self):
         import requests
 
         if not self.initialized.get():
@@ -507,7 +506,7 @@ class Magma(object):  # {{{
 
             message_type = message['msg_type']
             content = message['content']
-            if message_type == 'execute_input':  # {{{
+            if message_type == 'execute_input':
                 self.current_execution_count.set(content['execution_count'])
                 with self.history as history:
                     history[self.current_execution_count.get()] = {
@@ -525,9 +524,9 @@ class Magma(object):  # {{{
                                        not preview_window_enabled(),
                                        not preview_window_enabled())
                 self.events.put(initiate_execution)
-                return  # }}}
-            elif message_type == 'status':  # {{{
-                if content['execution_state'] == 'idle':  # {{{
+                return
+            elif message_type == 'status':
+                if content['execution_state'] == 'idle':
                     while self.port.get() == -1:
                         time.sleep(0.1)
 
@@ -571,37 +570,37 @@ class Magma(object):  # {{{
                             if time.time() - self.execution_timestamp > \
                                     EXECUTION_BIGTIME:
                                 self.events.put(partial(notify_done, False))
-                            self.kernel_state.set(KS_IDLE)  # }}}
-                elif content['execution_state'] == 'busy':  # {{{
-                    self.kernel_state.set(KS_BUSY)  # }}}
+                            self.kernel_state.set(KS_IDLE)
+                elif content['execution_state'] == 'busy':
+                    self.kernel_state.set(KS_BUSY)
                 self.events.put(lambda: vim.command('redrawstatus!'))
-                return  # }}}
-            elif message_type == 'execute_reply' and self.port.get() != -1:  # {{{
-                if content['status'] == 'ok':  # {{{
+                return
+            elif message_type == 'execute_reply' and self.port.get() != -1:
+                if content['status'] == 'ok':
                     data = {
                         'type': 'output',
                         'text': content['status'],
-                    }  # }}}
-                elif content['status'] == 'error':  # {{{
+                    }
+                elif content['status'] == 'error':
                     self.has_error.set(True)
                     data = {
                         'type': 'error',
                         'error_type': content['ename'],
                         'error_message': content['evalue'],
                         'traceback': content['traceback'],
-                    }  # }}}
-                elif content['status'] == 'abort':  # {{{
+                    }
+                elif content['status'] == 'abort':
                     self.has_error.set(True)
                     data = {
                         'type': 'error',
                         'error_type': "Aborted",
                         'error_message': "Kernel aborted with no error message",
                         'traceback': "",
-                    }  # }}}
+                    }
                 with self.history as history:
                     history[self.current_execution_count.get()]['output'] \
-                        .append(data)  # }}}
-            elif (message_type == 'execute_result' and  # {{{
+                        .append(data)
+            elif (message_type == 'execute_result' and
                   self.port.get() != -1):
                 data = {
                     'type': 'display',
@@ -609,8 +608,8 @@ class Magma(object):  # {{{
                 }
                 with self.history as history:
                     history[self.current_execution_count.get()]['output'] \
-                        .append(data)  # }}}
-            elif message_type == 'error' and self.port.get() != -1:  # {{{
+                        .append(data)
+            elif message_type == 'error' and self.port.get() != -1:
                 self.has_error.set(True)
                 data = {
                     'type': 'error',
@@ -621,8 +620,7 @@ class Magma(object):  # {{{
                 with self.history as history:
                     history[self.current_execution_count.get()]['output'] \
                         .append(data)
-                # }}}
-            elif message_type == 'display_data' and self.port.get() != -1:  # {{{
+            elif message_type == 'display_data' and self.port.get() != -1:
                 data = {
                     'type': 'display',
                     'content': content['data'],
@@ -630,8 +628,7 @@ class Magma(object):  # {{{
                 with self.history as history:
                     history[self.current_execution_count.get()]['output'] \
                         .append(data)
-                # }}}
-            elif message_type == 'stream' and self.port.get() != -1:  # {{{
+            elif message_type == 'stream' and self.port.get() != -1:
                 name = content['name']
                 if name == 'stdout':
                     data = {
@@ -648,34 +645,33 @@ class Magma(object):  # {{{
                 with self.history as history:
                     history[self.current_execution_count.get()]['output'] \
                         .append(data)
-                # }}}
             elif self.port.get() == -1:
                 self.iopub_queue.put(message)
                 return
-            else:  # {{{
-                return  # }}}
+            else:
+                return
 
             requests.post('http://127.0.0.1:%d'
                           % self.port.get(),
                           json=data)
         except queue.Empty:
-            return  # }}}
+            return
 
-    def update_loop(self):  # {{{
+    def update_loop(self):
         while True:
             if not self.initialized.get():
                 break
 
             self.update()
-            time.sleep(0.05)  # }}}
+            time.sleep(0.05)
 
-    def vim_update(self):  # {{{
+    def vim_update(self):
         if self.initialized.get():
             while self.events.qsize() > 0:
                 self.events.get()()
-            self.update_preview_window()  # }}}
+            self.update_preview_window()
 
-    def update_preview_window(self):  # {{{
+    def update_preview_window(self):
         if not self.initialized.get() or \
                 self.preview_window_id == -1 or \
                 int(vim.eval('win_id2win(%s)' % self.preview_window_id)) == 0 or \
@@ -721,15 +717,14 @@ class Magma(object):  # {{{
         if int(vim.eval('bufexists(%s)' % bufnum)):
             vim.command('call win_execute(%s, "b %s")'
                         % (self.preview_window_id, bufnum))
-        # }}}
 
-    def get_kernel_state(self, vim_var):  # {{{
-        vim.command('let %s = %s' % (vim_var, self.kernel_state.get()))  # }}}
+    def get_kernel_state(self, vim_var):
+        vim.command('let %s = %s' % (vim_var, self.kernel_state.get()))
 
     # Iterate over the current paragraph
 
     @staticmethod
-    def paragraph_iter():  # {{{
+    def paragraph_iter():
         vim.command('let l:cursor_pos = getpos(".")')
         vim.command('normal {')
         if vim.current.line == "":
@@ -740,22 +735,22 @@ class Magma(object):  # {{{
             vim.command('normal j')
             if prev_linenr == vim.eval('line(".")'):
                 break
-        vim.command('call setpos(".", l:cursor_pos)')  # }}}
+        vim.command('call setpos(".", l:cursor_pos)')
 
     # Sign functions:
 
     # # Query:
 
-    def getsigns_inbuffer(self):  # {{{
+    def getsigns_inbuffer(self):
         signs = vim.eval('sign_getplaced(%s, {"group": "magma"})'
                          % (self.main_buffer.number))
 
         if len(signs) == 0:
             return []
         else:
-            return signs[0]['signs']  # }}}
+            return signs[0]['signs']
 
-    def getsigns_line(self, lineno=None):  # {{{
+    def getsigns_line(self, lineno=None):
         if lineno is None:
             signs = vim.eval('sign_getplaced(%s,'
                              ' {"group": "magma","lnum": line(".")})'
@@ -767,13 +762,13 @@ class Magma(object):  # {{{
         if len(signs) == 0:
             return []
         else:
-            return signs[0]['signs']  # }}}
+            return signs[0]['signs']
 
     # # Modify:
 
-    def setsign(state_sign_storage, sign_text, sign_texthl, sign_linehl):  # {{{
-        def inner(gen_sign_name):  # {{{
-            def func(self, execution_count):  # {{{
+    def setsign(state_sign_storage, sign_text, sign_texthl, sign_linehl):
+        def inner(gen_sign_name):
+            def func(self, execution_count):
                 sign_name = gen_sign_name(execution_count)
 
                 state_sign_storage(self)[execution_count] = []
@@ -792,28 +787,28 @@ class Magma(object):  # {{{
                                       % (sign_name,
                                          self.main_buffer.number,
                                          lineno))
-                    state_sign_storage(self)[execution_count].append(signid)  # }}}
+                    state_sign_storage(self)[execution_count].append(signid)
 
-            return func  # }}}
+            return func
 
-        return inner  # }}}
+        return inner
 
-    def unsetsign(state_sign_storage):  # {{{
-        def inner(gen_sign_name):  # {{{
-            def func(self, execution_count):  # {{{
+    def unsetsign(state_sign_storage):
+        def inner(gen_sign_name):
+            def func(self, execution_count):
                 for signid in state_sign_storage(self)[execution_count]:
                     vim.command('sign unplace %s group=magma buffer=%s'
                                 % (signid, self.main_buffer.number))
-                del state_sign_storage(self)[execution_count]  # }}}
+                del state_sign_storage(self)[execution_count]
 
-            return func  # }}}
+            return func
 
-        return inner  # }}}
+        return inner
 
-    def chsign(state_sign_storage, new_state_sign_storage,  # {{{
+    def chsign(state_sign_storage, new_state_sign_storage,
                sign_text, sign_texthl, sign_linehl):
-        def inner(gen_sign_name):  # {{{
-            def func(self, execution_count):  # {{{
+        def inner(gen_sign_name):
+            def func(self, execution_count):
                 sign_name = gen_sign_name(execution_count)
 
                 new_state_sign_storage(self)[execution_count] = []
@@ -839,13 +834,13 @@ class Magma(object):  # {{{
                                          self.main_buffer.number,
                                          lineno))
                     new_state_sign_storage(self)[execution_count].append(signid)
-                del state_sign_storage(self)[execution_count]  # }}}
+                del state_sign_storage(self)[execution_count]
 
-            return func  # }}}
+            return func
 
-        return inner  # }}}
+        return inner
 
-    # setsign_*  {{{
+    # setsign_*
 
     @setsign(lambda self: self.sign_ids_hold, "∗", 'MagmaHoldSign', 'MagmaHoldLine')
     def setsign_hold(_):
@@ -866,9 +861,8 @@ class Magma(object):  # {{{
     @setsign(lambda self: self.sign_ids_err, "✗", 'MagmaErrSign', 'MagmaErrLine')
     def setsign_err(execution_count):
         return 'magma_err_%d' % execution_count
-    # }}}
 
-    # unsetsign_*  {{{
+    # unsetsign_*
 
     @unsetsign(lambda self: self.sign_ids_hold)
     def unsetsign_hold():
@@ -889,9 +883,8 @@ class Magma(object):  # {{{
     @unsetsign(lambda self: self.sign_ids_err)
     def unsetsign_err():
         pass
-    # }}}
 
-    # chsign_*2*  {{{
+    # chsign_*2*
 
     @chsign(lambda self: self.sign_ids_hold, lambda self: self.sign_ids_running, "@", 'MagmaRunningSign',
             'MagmaRunningLine')
@@ -912,9 +905,6 @@ class Magma(object):  # {{{
             'MagmaErrLine')
     def chsign_running2err(execution_count):
         return 'magma_err_%d' % execution_count
-    # }}}
-
-    # }}}
 
 
 magma_instances = []
@@ -927,9 +917,9 @@ def get_magma_instance():
             return instance
 
 
-def make_handler_for_instance(magma_instance):  # {{{
-    class MyHandler(http.server.BaseHTTPRequestHandler):  # {{{
-        def do_POST(self):  # {{{
+def make_handler_for_instance(magma_instance):
+    class MyHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
             content_length = int(self.headers['Content-length'])
             body = json.loads(self.rfile.read(content_length))
             self.send_response(202)
@@ -938,26 +928,26 @@ def make_handler_for_instance(magma_instance):  # {{{
             if 'action' in body and body['action'] == 'shutdown':
                 raise KeyboardInterrupt
 
-            magma_instance.port.set(body['port'])  # }}}}}}
+            magma_instance.port.set(body['port'])
 
-    def log_message(self, format, *args):  # {{{
-        pass  # do nothing}}}}}}
+    def log_message(self, format, *args):
+        pass  # do nothing
 
 
-class RunInLineNo(object):  # {{{
-    def __init__(self, lineno=None):  # {{{
-        self.lineno = lineno  # }}}
+class RunInLineNo(object):
+    def __init__(self, lineno=None):
+        self.lineno = lineno
 
-    def __enter__(self):  # {{{
+    def __enter__(self):
         self.current_line = vim.eval('getpos(".")')
         if self.lineno is not None:
-            vim.command('normal %sG' % self.lineno)  # }}}
+            vim.command('normal %sG' % self.lineno)
 
-    def __exit__(self, *_):  # {{{
-        vim.command('call setpos(".", %s)' % self.current_line)  # }}}}}}
+    def __exit__(self, *_):
+        vim.command('call setpos(".", %s)' % self.current_line)
 
 
-def notify_done(has_error):  # {{{
+def notify_done(has_error):
     if has_error:
         vim.command('call popup_notification("'
                     'Execution aborted due to error'
@@ -967,11 +957,11 @@ def notify_done(has_error):  # {{{
                     'Done executing'
                     '", {"title": "Magma"})')
     vim.command('call sound_playevent("%s")'
-                % vim.eval('g:magma_alert_sound'))  # }}}
+                % vim.eval('g:magma_alert_sound'))
 
 
 # Query for Magma options
 
 
-def preview_window_enabled():  # {{{
-    return bool(int(vim.eval('g:magma_preview_window_enabled')))  # }}}
+def preview_window_enabled():
+    return bool(int(vim.eval('g:magma_preview_window_enabled')))
