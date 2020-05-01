@@ -428,7 +428,8 @@ class Magma(object):
             '  call setbufvar(%s, "&relativenumber", 0)\n'
             '  call setbufvar(%s, "&foldcolumn", 0)\n'
             '  call setbufvar(%s, "&signcolumn", "no")\n'
-            "endfunction" % ((self.current_execution_count.get(),) + 6 * (bufno,))
+            '  call setbufvar(%s, "&listchars", "")\n'
+            "endfunction" % ((self.current_execution_count.get(),) + 7 * (bufno,))
         )
         vim.command('call setbufvar(%s, "&buflisted", 0)' % bufno)
         # vim.command('new')
