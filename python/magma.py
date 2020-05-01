@@ -151,9 +151,13 @@ class Magma(object):
                     parsed = json.load(f)
 
                 newports = jupyter_client.tunnel_to_kernel(connection_file, ssh)
-                parsed["shell_port"], parsed["iopub_port"], parsed[
-                    "stdin_port"
-                ], parsed["hb_port"], parsed["control_port"] = newports
+                (
+                    parsed["shell_port"],
+                    parsed["iopub_port"],
+                    parsed["stdin_port"],
+                    parsed["hb_port"],
+                    parsed["control_port"],
+                ) = newports
 
                 with open(connection_file, "w") as f:
                     json.dump(parsed, f)
@@ -216,6 +220,13 @@ class Magma(object):
 
             self.background_loop.join()
             self.background_server.join()
+
+            # remove all signs
+            for signdata in self.getsigns_inbuffer():
+                vim.command(
+                    "sign unplace %s group=magma buffer=%s"
+                    % (signdata["id"], self.main_buffer.number)
+                )
 
             self.client.shutdown()
             self.kernel_state.set(KS_NOT_CONNECTED)
