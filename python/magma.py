@@ -232,8 +232,9 @@ class Magma(object):
             self.kernel_state.set(KS_NOT_CONNECTED)
             self.main_buffer = None
 
+            vim.command("silent bwipeout %s" % (" ".join(self.output_buffers)))
             if preview_window_enabled():
-                vim.command('call win_execute(%s, "bd")' % self.preview_window_id)
+                vim.command('call win_execute(%s, "bwipeout")' % self.preview_window_id)
             self.main_window_id = -1
             self.preview_window_id = -1
 
