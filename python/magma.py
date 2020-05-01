@@ -92,6 +92,33 @@ class Magma(object):
     def __del__(self):
         self.deinitialize()
 
+    def initialize_common(self):
+        self.kernel_state.set(KS_IDLE)
+        self.main_buffer = vim.current.buffer
+        self.main_window_id = vim.eval("win_getid()")
+
+        if preview_window_enabled():
+            vim.command("new")
+            vim.command("setl nobuflisted")
+            vim.command("f (magma.vim) Output Preview")
+            vim.command("setl buftype=nofile")
+            vim.command("setl noswapfile")
+            vim.command("setl nomodifiable")
+            vim.command("setl nonumber")
+            vim.command("setl norelativenumber")
+            vim.command("setl foldcolumn=0")
+            vim.command("setl signcolumn=no")
+            self.preview_empty_buffer = vim.current.buffer
+            self.preview_window_id = vim.eval("win_getid()")
+            vim.command("call win_gotoid(%s)" % self.main_window_id)
+
+        vim.command("call timer_pause(g:magma_timer, 0)")
+
+        self.initialized.set(True)
+
+        self.start_background_loop()
+        self.start_background_server()
+
     def initialize_new(self, kernel_name):
         """
         Initialize the client and a local kernel, if it isn't yet initialized.
@@ -105,31 +132,7 @@ class Magma(object):
             _, self.client = jupyter_client.manager.start_new_kernel(
                 kernel_name=kernel_name
             )
-            self.kernel_state.set(KS_IDLE)
-            self.main_buffer = vim.current.buffer
-            self.main_window_id = vim.eval("win_getid()")
-
-            if preview_window_enabled():
-                vim.command("new")
-                vim.command("setl nobuflisted")
-                vim.command("f (magma.vim) Output Preview")
-                vim.command("setl buftype=nofile")
-                vim.command("setl noswapfile")
-                vim.command("setl nomodifiable")
-                vim.command("setl nonumber")
-                vim.command("setl norelativenumber")
-                vim.command("setl foldcolumn=0")
-                vim.command("setl signcolumn=no")
-                self.preview_empty_buffer = vim.current.buffer
-                self.preview_window_id = vim.eval("win_getid()")
-                vim.command("call win_gotoid(%s)" % self.main_window_id)
-
-            vim.command("call timer_pause(g:magma_timer, 0)")
-
-            self.initialized.set(True)
-
-            self.start_background_loop()
-            self.start_background_server()
+            self.initialize_common()
 
     def initialize_remote(self, connection_file, ssh=None):
         """
@@ -165,27 +168,7 @@ class Magma(object):
                 self.client.stop_channels()
                 print("Could not connect to existing kernel: %s" % err, file=sys.stderr)
                 return
-            self.kernel_state.set(KS_IDLE)
-            self.main_buffer = vim.current.buffer
-            self.main_window_id = vim.eval("win_getid()")
-
-            if preview_window_enabled():
-                vim.command("new")
-                vim.command("setl nobuflisted")
-                vim.command("f (magma.vim) Output Preview")
-                vim.command("setl buftype=nofile")
-                vim.command("setl noswapfile")
-                vim.command("setl nomodifiable")
-                self.preview_empty_buffer = vim.current.buffer
-                self.preview_window_id = vim.eval("win_getid()")
-                vim.command("call win_gotoid(%s)" % self.main_window_id)
-
-            vim.command("call timer_pause(g:magma_timer, 0)")
-
-            self.initialized.set(True)
-
-            self.start_background_loop()
-            self.start_background_server()
+            self.initialize_common()
 
     def start_background_loop(self):
         self.background_loop = threading.Thread(target=self.update_loop)
@@ -490,6 +473,7 @@ class Magma(object):
                     "while the kernel is busy",
                     file=sys.stderr,
                 )
+                return
             else:
                 execution_count = int(signname[9:])
 
@@ -500,6 +484,7 @@ class Magma(object):
                     self.start_outputs(False, True, True)
 
                 def forward_output():
+                    # FIXME: Vim likes to crash here (output makes it look as if it runs twice):
                     while self.port.get() == -1:
                         time.sleep(0.1)
 
