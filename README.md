@@ -1,3 +1,9 @@
+This plugin is obsolete, and will not be maintained.
+
+A new version of it, for NeoVim, is available at [dccsillag/magma-nvim](https://github.com/dccsillag/magma-nvim).
+
+---
+
 Magma
 ===
 
